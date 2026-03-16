@@ -1,6 +1,9 @@
 """
 Strategy 1: Copy Trading
 Replicates trades from top-performing Polymarket wallets.
+
+Uses the real Polymarket leaderboard API:
+GET https://data-api.polymarket.com/v1/leaderboard?category=OVERALL&timePeriod=MONTH&orderBy=PNL&limit=20
 """
 
 import asyncio
@@ -18,13 +21,16 @@ from wallet import WalletManager
 
 logger = logging.getLogger("strategy.copy_trade")
 
+# Polymarket leaderboard API endpoint
+LEADERBOARD_API = "https://data-api.polymarket.com/v1/leaderboard"
+
 
 class CopyTradeStrategy:
     """
     Monitors top-performing Polymarket wallets and replicates their trades.
 
     Flow:
-    1. Fetch top 20 wallets by total profit (30d).
+    1. Fetch top 20 wallets by monthly PnL from the Polymarket leaderboard API.
     2. Poll their positions every 60s.
     3. When a tracked wallet opens a new position, mirror it with risk caps.
     4. Log all decisions and outcomes to the database.
@@ -96,22 +102,21 @@ class CopyTradeStrategy:
         )
 
     async def _refresh_leaderboard(self) -> None:
-        """Fetch and rank top wallets from Polymarket's leaderboard."""
-        logger.info("Refreshing leaderboard...")
+        """Fetch and rank top wallets from Polymarket's leaderboard API."""
+        logger.info("Refreshing leaderboard from Polymarket data API...")
 
         if config.PAPER_TRADING:
             wallets = self._simulated_leaderboard()
         else:
             wallets = await self._fetch_leaderboard()
 
-        # Filter: must have >= minimum trades in last 30 days
+        # Filter: must have positive PnL and reasonable trade count
         qualified = [
             w for w in wallets
-            if w.get("trade_count", 0) >= config.COPY_TRADE_MIN_WALLET_TRADES
+            if w.get("pnl", 0) > 10000  # Only profitable wallets
         ]
 
-        # Rank by total profit, take top N
-        qualified.sort(key=lambda w: w.get("total_profit", 0), reverse=True)
+        # Take top N
         top = qualified[:config.COPY_TRADE_TOP_WALLETS_COUNT]
 
         # Update tracked wallets
@@ -120,9 +125,9 @@ class CopyTradeStrategy:
             addr = w["address"]
             self._tracked_wallets[addr] = {
                 "rank": i + 1,
-                "total_profit": w.get("total_profit", 0),
-                "trade_count": w.get("trade_count", 0),
-                "win_rate": w.get("win_rate", 0),
+                "userName": w.get("userName", "anon"),
+                "pnl": w.get("pnl", 0),
+                "vol": w.get("vol", 0),
             }
 
             # Persist to DB
@@ -134,38 +139,45 @@ class CopyTradeStrategy:
                    rank=excluded.rank, total_profit=excluded.total_profit,
                    trade_count=excluded.trade_count, win_rate=excluded.win_rate,
                    last_refreshed=excluded.last_refreshed""",
-                (addr, i + 1, w.get("total_profit", 0),
-                 w.get("trade_count", 0), w.get("win_rate", 0),
+                (addr, i + 1, w.get("pnl", 0),
+                 0, 0,  # trade_count and win_rate not in API
                  datetime.utcnow().isoformat()),
             )
 
         await self._db.commit()
         self._last_leaderboard_refresh = datetime.utcnow()
 
+        # Log top 5 for visibility
+        top5 = [f"{w.get('userName', 'anon')}: ${w.get('pnl', 0)/1000:.0f}k" for w in top[:5]]
         logger.info(
-            "Leaderboard updated: %d qualified wallets tracked",
-            len(self._tracked_wallets),
+            "Leaderboard updated: %d wallets tracked. Top 5: %s",
+            len(self._tracked_wallets), ", ".join(top5),
         )
 
     async def _fetch_leaderboard(self) -> list[dict[str, Any]]:
-        """Fetch leaderboard data from Polymarket's API."""
-        url = f"{config.POLYMARKET_GAMMA_API}/leaderboard"
-        params = {"window": "30d", "limit": 100}
+        """Fetch leaderboard data from Polymarket's data API."""
+        params = {
+            "category": "OVERALL",
+            "timePeriod": "MONTH",
+            "orderBy": "PNL",
+            "limit": "50",
+        }
+        url = f"{LEADERBOARD_API}?{'&'.join(f'{k}={v}' for k, v in params.items())}"
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params) as resp:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         return [
                             {
-                                "address": entry.get("userAddress", entry.get("address", "")),
-                                "total_profit": float(entry.get("totalProfit", entry.get("profit", 0))),
-                                "trade_count": int(entry.get("numTrades", entry.get("trade_count", 0))),
-                                "win_rate": float(entry.get("winRate", entry.get("win_rate", 0))),
+                                "address": entry.get("proxyWallet", ""),
+                                "userName": entry.get("userName", "anon"),
+                                "pnl": float(entry.get("pnl", 0)),
+                                "vol": float(entry.get("vol", 0)),
                             }
                             for entry in data
-                            if entry.get("userAddress") or entry.get("address")
+                            if entry.get("proxyWallet")
                         ]
                     else:
                         logger.error("Leaderboard API returned %d", resp.status)
@@ -180,9 +192,9 @@ class CopyTradeStrategy:
         for i in range(30):
             wallets.append({
                 "address": f"0x{'%040x' % (0xDEAD0000 + i)}",
-                "total_profit": 50000 - i * 1500 + (i % 3) * 500,
-                "trade_count": 50 + i * 3,
-                "win_rate": 0.70 - i * 0.005,
+                "userName": f"sim_trader_{i}",
+                "pnl": 500000 - i * 15000 + (i % 3) * 5000,
+                "vol": 1000000 + i * 50000,
             })
         return wallets
 
@@ -200,8 +212,8 @@ class CopyTradeStrategy:
                 p["market_id"]: p for p in current_positions
             }
             logger.debug(
-                "Initial scan for %s: %d positions",
-                address[:12], len(current_positions),
+                "Initial scan for %s (%s): %d positions",
+                address[:12], info.get("userName", "anon"), len(current_positions),
             )
             return
 
@@ -215,8 +227,8 @@ class CopyTradeStrategy:
 
             # New position detected!
             logger.info(
-                "New position detected from wallet %s (rank #%d): %s %s in %s",
-                address[:12], info["rank"],
+                "New position detected from %s (rank #%d): %s %s in %s",
+                info.get("userName", address[:12]), info["rank"],
                 pos.get("side", "BUY"), pos.get("outcome", "?"),
                 market_id[:12],
             )
@@ -235,12 +247,13 @@ class CopyTradeStrategy:
         if config.PAPER_TRADING:
             return self._simulated_wallet_positions(address)
 
+        # Use Gamma API for positions
         url = f"{config.POLYMARKET_GAMMA_API}/positions"
         params = {"user": address, "sizeThreshold": "0.01"}
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params) as resp:
+                async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         return [
@@ -367,9 +380,9 @@ class CopyTradeStrategy:
 
         # 6. Execute
         logger.info(
-            "Executing copy trade: %s %s %.2f tokens @ $%.4f ($%.2f) from wallet %s",
+            "Executing copy trade: %s %s %.2f tokens @ $%.4f ($%.2f) from %s",
             "BUY", position["outcome"], size_tokens, price, cost,
-            source_address[:12],
+            wallet_info.get("userName", source_address[:12]),
         )
 
         # Record position in DB
@@ -386,7 +399,7 @@ class CopyTradeStrategy:
             size=size_tokens,
             strategy="copy_trade",
             source_wallet=source_address,
-            notes=f"Copied from wallet rank #{wallet_info['rank']}",
+            notes=f"Copied from {wallet_info.get('userName', 'anon')} (rank #{wallet_info['rank']})",
         )
 
         # Place order
@@ -422,7 +435,7 @@ class CopyTradeStrategy:
         outcome_lower = outcome.lower()
         for token in tokens:
             token_outcome = token.get("outcome", "").lower()
-            if token_outcome == outcome_lower or token_outcome == "yes" and outcome_lower == "yes":
+            if token_outcome == outcome_lower:
                 return token.get("token_id", "")
 
         # Fallback: return first token
