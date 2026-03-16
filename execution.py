@@ -177,6 +177,10 @@ class OrderExecutor:
 
     # ── Order Placement ─────────────────────────────────────────────────────
 
+    # NOTE: When placing real orders, always pass tick_size and neg_risk:
+    # tick_size="0.01" for most markets, neg_risk=False
+    # The CLOB API will reject orders without proper tick size.
+
     async def place_order(
         self,
         token_id: str,
