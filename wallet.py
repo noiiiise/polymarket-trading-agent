@@ -20,7 +20,8 @@ logger = logging.getLogger("wallet")
 class WalletManager:
     """
     Central wallet state manager.
-    - Fetches live USDC balance from Polygon (or paper balance).
+    - Fetches live USDC.e balance from Polygon via on-chain RPC (primary method).
+    - Falls back to Gamma API and data-api if RPC fails.
     - Tracks all open positions from the database.
     - Enforces position caps and total exposure limits before every trade.
     """
@@ -32,6 +33,7 @@ class WalletManager:
         self.last_refresh: datetime | None = None
         self._db: aiosqlite.Connection | None = None
         self._running: bool = False
+        self._wallet_address: str = config.POLYMARKET_WALLET_ADDRESS
 
         # Paper trading state
         if config.PAPER_TRADING:
@@ -56,7 +58,24 @@ class WalletManager:
     async def refresh(self) -> None:
         """Refresh balance and positions from chain/db."""
         if not config.PAPER_TRADING:
-            self.balance = await self._fetch_onchain_balance()
+            # Primary: on-chain USDC.e balance via RPC
+            balance = await self._fetch_balance_onchain()
+            if balance > 0.0:
+                self.balance = balance
+            else:
+                # Fallback 1: Gamma API (unreliable — often returns 404)
+                logger.warning("On-chain RPC returned 0, trying Gamma API fallback...")
+                balance = await self._fetch_balance_gamma()
+                if balance > 0.0:
+                    self.balance = balance
+                else:
+                    # Fallback 2: data-api (requires lowercase address)
+                    logger.warning("Gamma API failed, trying data-api fallback...")
+                    balance = await self._fetch_balance_data_api()
+                    if balance > 0.0:
+                        self.balance = balance
+                    else:
+                        logger.error("All balance fetch methods failed, keeping last known: $%.2f", self.balance)
         else:
             # In paper mode, balance = initial - open exposure + realized P&L
             await self._recalculate_paper_balance()
@@ -95,29 +114,25 @@ class WalletManager:
 
         self.balance = base - open_exposure + realized_pnl
 
-    async def _fetch_onchain_balance(self) -> float:
-        """Fetch USDC balance from Polygon via RPC."""
-        if not config.POLYMARKET_WALLET_ADDRESS:
+    async def _fetch_balance_onchain(self) -> float:
+        """
+        Fetch USDC.e balance directly from Polygon blockchain via RPC.
+        This is the most reliable method — no API keys needed with 1rpc.io/matic.
+        USDC.e has 6 decimals.
+        """
+        if not self._wallet_address:
             logger.warning("No wallet address configured, returning 0 balance")
             return 0.0
 
-        # USDC on Polygon: 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174
-        usdc_contract = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
-
-        # ERC-20 balanceOf(address) selector
-        call_data = (
-            "0x70a08231"
-            + config.POLYMARKET_WALLET_ADDRESS.lower().replace("0x", "").zfill(64)
-        )
+        # Pad address to 64 hex chars (left-pad with zeros) for balanceOf call
+        addr_padded = self._wallet_address.replace("0x", "").lower().zfill(64)
+        call_data = f"{config.BALANCE_OF_SELECTOR}{addr_padded}"
 
         payload = {
             "jsonrpc": "2.0",
-            "id": 1,
             "method": "eth_call",
-            "params": [
-                {"to": usdc_contract, "data": call_data},
-                "latest",
-            ],
+            "params": [{"to": config.USDC_E_ADDRESS, "data": call_data}, "latest"],
+            "id": 1,
         }
 
         try:
@@ -127,14 +142,73 @@ class WalletManager:
                     json=payload,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as resp:
-                    result = await resp.json()
-                    hex_balance = result.get("result", "0x0")
-                    # USDC has 6 decimals
-                    raw = int(hex_balance, 16)
-                    return raw / 1_000_000
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if "result" in data and data["result"] and data["result"] != "0x":
+                            raw = int(data["result"], 16)
+                            balance = raw / 1e6  # USDC.e has 6 decimals
+                            logger.debug("On-chain USDC.e balance: $%.2f", balance)
+                            return balance
+                    else:
+                        logger.warning("RPC returned status %d", resp.status)
         except Exception as e:
             logger.error("Failed to fetch on-chain balance: %s", e)
-            return self.balance  # Return last known balance on error
+
+        return 0.0
+
+    async def _fetch_balance_gamma(self) -> float:
+        """
+        Fallback: Fetch balance from Gamma API /profiles/{address}.
+        NOTE: This returns 404 for most wallets — unreliable.
+        """
+        if not self._wallet_address:
+            return 0.0
+
+        url = f"{config.POLYMARKET_GAMMA_API}/profiles/{self._wallet_address}"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url, timeout=aiohttp.ClientTimeout(total=10)
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        balance = float(data.get("collateral_balance", 0))
+                        logger.debug("Gamma API balance: $%.2f", balance)
+                        return balance
+                    else:
+                        logger.debug("Gamma API /profiles returned %d", resp.status)
+        except Exception as e:
+            logger.debug("Gamma API fallback failed: %s", e)
+
+        return 0.0
+
+    async def _fetch_balance_data_api(self) -> float:
+        """
+        Fallback: Fetch balance from data-api.polymarket.com.
+        NOTE: Requires lowercase address — checksummed addresses return 'invalid'.
+        """
+        if not self._wallet_address:
+            return 0.0
+
+        addr = self._wallet_address.lower()
+        url = f"https://data-api.polymarket.com/value?user={addr}"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url, timeout=aiohttp.ClientTimeout(total=10)
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if isinstance(data, (int, float)):
+                            logger.debug("Data API balance: $%.2f", float(data))
+                            return float(data)
+                        elif isinstance(data, dict) and "value" in data:
+                            logger.debug("Data API balance: $%.2f", float(data["value"]))
+                            return float(data["value"])
+        except Exception as e:
+            logger.debug("Data API fallback failed: %s", e)
+
+        return 0.0
 
     # ── Risk checks ─────────────────────────────────────────────────────────
 
