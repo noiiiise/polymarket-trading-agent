@@ -25,8 +25,17 @@ POLYMARKET_WS_URL: str = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
 POLYMARKET_GAMMA_API: str = "https://gamma-api.polymarket.com"
 
 # Chain / Execution
-POLYGON_RPC_URL: str = os.getenv("POLYGON_RPC_URL", "https://polygon-rpc.com")
+# Polygon RPC — 1rpc.io/matic is free and reliable (polygon-rpc.com now requires API key)
+POLYGON_RPC_URL: str = os.getenv("POLYGON_RPC_URL", "https://1rpc.io/matic")
 CHAIN_ID: int = 137  # Polygon mainnet
+
+# USDC.e on Polygon (what Polymarket uses for collateral)
+USDC_E_ADDRESS: str = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
+BALANCE_OF_SELECTOR: str = "0x70a08231"  # ERC-20 balanceOf(address)
+
+# NOTE: Gamma API /profiles/{address} returns 404 for most wallets.
+# data-api.polymarket.com/value?user= requires lowercase addresses.
+# Most reliable balance method: direct on-chain USDC.e query via RPC.
 
 # ── Copy Trade Strategy ─────────────────────────────────────────────────────
 COPY_TRADE_MAX_POSITION_PCT: float = 0.05          # 5% of wallet per copy trade (HARD CAP)
