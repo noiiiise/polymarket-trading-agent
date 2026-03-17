@@ -44,14 +44,23 @@ export async function initClient(): Promise<ClobClient> {
       const creds = await tempClient.createOrDeriveApiKey();
       console.log("[PolyClient] API creds derived successfully");
 
-      // Full client with GNOSIS_SAFE signature type (2) and funder address
+      // Check if signer address matches wallet address
+      // If they match: use EOA signature (type 0)
+      // If different: wallet is likely a Gnosis Safe, use GNOSIS_SAFE signature (type 2)
+      const signerAddress = signer.address.toLowerCase();
+      const configuredWallet = walletAddress.toLowerCase();
+      const isEOA = signerAddress === configuredWallet;
+      const signatureType = isEOA ? 0 : 2; // 0=EOA, 2=GNOSIS_SAFE
+
+      console.log(`[PolyClient] Signer: ${signerAddress}, Wallet: ${configuredWallet}, isEOA: ${isEOA}, signatureType: ${signatureType}`);
+
       const client = new ClobClient(
         CLOB_HOST,
         CHAIN_ID,
         signer,
         creds,
-        2, // GNOSIS_SAFE
-        walletAddress
+        signatureType,
+        isEOA ? undefined : walletAddress // funderAddress only needed for Safe
       );
 
       clobClient = client;
@@ -360,13 +369,21 @@ async function getRelayClient(): Promise<ClobClient> {
     const creds = await tempClient.createOrDeriveApiKey();
     console.log("[PolyClient] Relay API creds derived");
 
+    // Check if EOA or Gnosis Safe
+    const signerAddress = signer.address.toLowerCase();
+    const configuredWallet = walletAddress.toLowerCase();
+    const isEOA = signerAddress === configuredWallet;
+    const signatureType = isEOA ? 0 : 2;
+
+    console.log(`[PolyClient] Relay - Signer: ${signerAddress}, isEOA: ${isEOA}, signatureType: ${signatureType}`);
+
     const client = new ClobClient(
       proxyUrl,
       CHAIN_ID,
       signer,
       creds,
-      2, // GNOSIS_SAFE
-      walletAddress
+      signatureType,
+      isEOA ? undefined : walletAddress
     );
 
     relayClobClient = client;
