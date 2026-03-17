@@ -1,0 +1,838 @@
+{
+  "trades": [
+    {
+      "id": "69e08755-848f-4658-b89d-2ab584967df8",
+      "timestamp": "2026-03-17T15:16:19.361Z",
+      "tokenId": "63255709540320761353971859526848930870803944190764324681913735372035438815215",
+      "side": "BUY",
+      "price": 0.53,
+      "size": 9.238695188679246,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "c9663fff-9456-4363-a9a8-996bded93d3d",
+      "timestamp": "2026-03-17T15:16:49.141Z",
+      "tokenId": "63255709540320761353971859526848930870803944190764324681913735372035438815215",
+      "side": "BUY",
+      "price": 0.53,
+      "size": 9.238695188679246,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "9da0fb37-f768-4958-90ba-3d73e8915ed7",
+      "timestamp": "2026-03-17T15:17:19.034Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "1e230780-4bbc-4083-9775-03e50bfc68af",
+      "timestamp": "2026-03-17T15:17:49.121Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "f96c3a5d-bc0e-4560-aa95-9b724ba9e1d6",
+      "timestamp": "2026-03-17T15:18:19.137Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "038c43a4-4478-4bee-91f7-795bf60550a5",
+      "timestamp": "2026-03-17T15:18:49.031Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "0f55d00c-5a41-43b7-b2b5-40f775cdfeb7",
+      "timestamp": "2026-03-17T15:19:19.140Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "1447d1c5-0ed1-4533-ba07-91af00115d7e",
+      "timestamp": "2026-03-17T15:19:49.227Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "0172a475-04e3-4249-9e37-03a7f9d5944a",
+      "timestamp": "2026-03-17T15:20:49.053Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "f66f4772-5417-4df0-91f5-744a22e8cd21",
+      "timestamp": "2026-03-17T15:21:19.029Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "6dd0686f-0171-45bd-a3ff-caf5e30cfb25",
+      "timestamp": "2026-03-17T15:21:49.060Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "4247b868-87d1-4f48-8dae-448fb2a7aa5f",
+      "timestamp": "2026-03-17T15:22:19.066Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "82c84ae7-8f8c-46d3-b5cb-45bedb2268bf",
+      "timestamp": "2026-03-17T15:22:49.075Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "c12fa58e-cd3f-48a0-b611-25038c1c1544",
+      "timestamp": "2026-03-17T15:23:19.034Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "16ee2af2-8079-4077-8f96-75d2f067f0db",
+      "timestamp": "2026-03-17T15:23:49.038Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "a1d97c0e-576b-4b9d-870b-06f7b923c550",
+      "timestamp": "2026-03-17T15:24:19.039Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "8bf2e6d2-11bd-4359-bd9e-0e8e9d61ac0f",
+      "timestamp": "2026-03-17T15:24:49.035Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "13bf1cf3-ba2d-4756-8db1-0f61ce2bcbec",
+      "timestamp": "2026-03-17T15:26:19.033Z",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "submitted_unfilled",
+        "orderId": "",
+        "result": {
+          "error": "Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock",
+          "status": 403
+        }
+      }
+    },
+    {
+      "id": "58e4388d-6847-4f39-b3c8-28766d194fdd",
+      "timestamp": "2026-03-17T15:57:40.242Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "bfcf27ce-3b0b-4996-9f01-ed96fd46cef0",
+      "timestamp": "2026-03-17T15:58:10.015Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "2a6ab346-03a1-4652-93e8-0a7496d15c65",
+      "timestamp": "2026-03-17T15:58:40.020Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "3aa55366-7901-4628-9635-3b9b0ae01ba1",
+      "timestamp": "2026-03-17T15:59:10.011Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "c1c242ec-7a71-4568-bf87-220005d9f21a",
+      "timestamp": "2026-03-17T15:59:40.026Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "ec86bec5-1a4c-41e3-8a9f-25d4ac6ef3aa",
+      "timestamp": "2026-03-17T16:00:10.041Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "27fa5b0c-6350-4e4f-9aa6-b85c37d2b85b",
+      "timestamp": "2026-03-17T16:00:40.030Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "9faa4acf-1d17-40a2-ba5a-acbc2db8e999",
+      "timestamp": "2026-03-17T16:01:10.021Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "097df189-8fa8-4153-9ec3-66159db9dea1",
+      "timestamp": "2026-03-17T16:01:40.077Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "eb91bccf-ee37-4dd8-a6f1-f5f578394e8e",
+      "timestamp": "2026-03-17T16:02:10.041Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "5857f02a-a54c-408a-9850-2ac4940bfd9a",
+      "timestamp": "2026-03-17T16:02:40.094Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "0a8648cd-acf2-4676-a896-f10baeabe431",
+      "timestamp": "2026-03-17T16:03:10.079Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "a0bae12c-8f39-4a21-94df-f8ebb6dcd457",
+      "timestamp": "2026-03-17T16:03:40.025Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "8e00710b-2e45-4821-b64e-bbed238eb8cf",
+      "timestamp": "2026-03-17T16:04:10.021Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "0754ae86-02da-4cf8-84cc-7483d40fc41f",
+      "timestamp": "2026-03-17T16:04:40.035Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "989ece17-4863-4269-97b6-578a8a85d739",
+      "timestamp": "2026-03-17T16:05:40.046Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "05715df6-63a5-41e1-8b0a-ae4f92d5d3f9",
+      "timestamp": "2026-03-17T16:06:10.040Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "35345bb4-6448-4764-a089-b81f9a9dafcc",
+      "timestamp": "2026-03-17T16:07:10.021Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "51274018-1e01-4f5c-a861-3c6bc82c9a01",
+      "timestamp": "2026-03-17T16:07:40.066Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "13b86b90-7afa-4013-9d72-5b91eb645d25",
+      "timestamp": "2026-03-17T16:08:10.060Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "54aa4e1a-384a-4cda-a45e-e44c8d460f28",
+      "timestamp": "2026-03-17T16:08:40.032Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    },
+    {
+      "id": "c682f303-6885-4f90-9187-b77692b10e3c",
+      "timestamp": "2026-03-17T16:09:10.054Z",
+      "tokenId": "66171739992083196559344828414730048049068421581634574503689168928029116016468",
+      "side": "BUY",
+      "price": 0.51,
+      "size": 9.600996960784315,
+      "strategy": "copy_trade",
+      "paper": false,
+      "result": {
+        "status": "failed",
+        "error": "CLOB order failed: 403 {\"error\":\"Trading restricted in your region, please refer to available regions - https://docs.polymarket.com/developers/CLOB/geoblock\"}"
+      }
+    }
+  ],
+  "positions": [],
+  "openOrders": [
+    {
+      "orderId": "",
+      "tokenId": "63255709540320761353971859526848930870803944190764324681913735372035438815215",
+      "marketQuestion": "Will the Democrats win the Ohio governor race in 2026? (Yes)",
+      "side": "BUY",
+      "price": 0.53,
+      "size": 9.238695188679246,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:16:19.361Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "63255709540320761353971859526848930870803944190764324681913735372035438815215",
+      "marketQuestion": "Will the Democrats win the Ohio governor race in 2026? (Yes)",
+      "side": "BUY",
+      "price": 0.53,
+      "size": 9.238695188679246,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:16:49.141Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:17:19.034Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:17:49.121Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:18:19.137Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:18:49.031Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:19:19.140Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:19:49.227Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:20:49.053Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:21:19.029Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:21:49.060Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:22:19.066Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:22:49.075Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:23:19.034Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:23:49.038Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:24:19.039Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:24:49.035Z",
+      "status": "submitted"
+    },
+    {
+      "orderId": "",
+      "tokenId": "51939490109676186832507970701169130490548061087912630009168726706475001411420",
+      "marketQuestion": "Will the Republican Party control the Senate after the 2026 Midterm elections? (Yes)",
+      "side": "BUY",
+      "price": 0.5,
+      "size": 9.793016900000001,
+      "strategy": "copy_trade",
+      "submittedAt": "2026-03-17T15:26:19.033Z",
+      "status": "submitted"
+    }
+  ],
+  "lastSaved": "2026-03-17T16:09:10.123Z"
+}

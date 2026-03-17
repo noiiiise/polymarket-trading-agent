@@ -1,0 +1,26 @@
+# Environment files with secrets
+.env
+.env.local
+*.env
+!.env.production
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+.next/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+server.log
