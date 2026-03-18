@@ -94,14 +94,25 @@ class OrderExecutor:
                 "API credentials derived (key=%s...)", creds.api_key[:8] if creds else "?"
             )
 
-        self._clob_client = ClobClient(
-            host=config.POLYMARKET_REST_BASE,
-            chain_id=POLYGON,
-            key=config.POLYMARKET_PRIVATE_KEY,
-            creds=creds,
-            funder=config.POLYMARKET_WALLET_ADDRESS or None,
-        )
-        logger.info("CLOB client initialized")
+        # funder = the Polymarket proxy wallet address (may differ from signing key).
+        # Some py-clob-client versions don't accept this param — fall back gracefully.
+        funder = config.POLYMARKET_WALLET_ADDRESS or None
+        try:
+            self._clob_client = ClobClient(
+                host=config.POLYMARKET_REST_BASE,
+                chain_id=POLYGON,
+                key=config.POLYMARKET_PRIVATE_KEY,
+                creds=creds,
+                funder=funder,
+            )
+        except TypeError:
+            self._clob_client = ClobClient(
+                host=config.POLYMARKET_REST_BASE,
+                chain_id=POLYGON,
+                key=config.POLYMARKET_PRIVATE_KEY,
+                creds=creds,
+            )
+        logger.info("CLOB client initialized (wallet=%s...)", (funder or "")[:12])
 
     async def stop(self) -> None:
         """Clean shutdown."""
