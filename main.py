@@ -13,6 +13,7 @@ from datetime import datetime
 
 import config
 import database
+from dashboard import start_dashboard
 from execution import OrderExecutor
 from logger import StrategyDocLogger
 from strategies.copy_trade import CopyTradeStrategy
@@ -75,6 +76,10 @@ async def run_agent() -> None:
         logger.warning("GITHUB_TOKEN not set — STRATEGY_DOC.md will only update locally")
     if not config.GITHUB_OWNER:
         logger.warning("GITHUB_OWNER not set — GitHub push disabled")
+
+    # Start web dashboard
+    start_dashboard(port=int(os.getenv("PORT", "5000")))
+    logger.info("Dashboard running on http://0.0.0.0:%s", os.getenv("PORT", "5000"))
 
     # Initialize database
     logger.info("Initializing database at %s", config.SQLITE_DB_PATH)
