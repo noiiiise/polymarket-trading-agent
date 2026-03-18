@@ -16,7 +16,7 @@ import aiosqlite
 import websockets
 
 from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import ApiCreds, OrderArgs, OrderType
+from py_clob_client.clob_types import ApiCreds, OrderArgs, OrderType, BUY, SELL
 from py_clob_client.constants import POLYGON
 
 import config
@@ -24,9 +24,7 @@ import database
 
 logger = logging.getLogger("execution")
 
-# py-clob-client expects string sides
-_SIDE_BUY = "BUY"
-_SIDE_SELL = "SELL"
+# BUY/SELL imported directly from py-clob-client so the type is always correct
 
 
 class OrderExecutor:
@@ -292,7 +290,7 @@ class OrderExecutor:
             token_id=token_id,
             price=price_rounded,
             size=size_rounded,
-            side=_SIDE_BUY if side == "BUY" else _SIDE_SELL,
+            side=BUY if side == "BUY" else SELL,
         )
 
         signed_order = await loop.run_in_executor(
