@@ -77,9 +77,10 @@ async def run_agent() -> None:
     if not config.GITHUB_OWNER:
         logger.warning("GITHUB_OWNER not set — GitHub push disabled")
 
-    # Start web dashboard
-    start_dashboard(port=int(os.getenv("PORT", "5000")))
-    logger.info("Dashboard running on http://0.0.0.0:%s", os.getenv("PORT", "5000"))
+    # Start web dashboard — Railway injects $PORT; default to 8080 locally
+    dashboard_port = int(os.getenv("PORT", "8080"))
+    start_dashboard(port=dashboard_port)
+    logger.info("Dashboard running on http://0.0.0.0:%d", dashboard_port)
 
     # Initialize database
     logger.info("Initializing database at %s", config.SQLITE_DB_PATH)
