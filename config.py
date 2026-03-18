@@ -51,7 +51,7 @@ BALANCE_OF_SELECTOR: str = "0x70a08231"  # ERC-20 balanceOf(address)
 # ── Copy Trade Strategy ─────────────────────────────────────────────────────
 COPY_TRADE_MAX_POSITION_PCT: float = 0.05          # 5% of wallet per copy trade (HARD CAP)
 COPY_TRADE_POLL_INTERVAL_SEC: int = 60              # Poll top wallets every 60s
-COPY_TRADE_TOP_WALLETS_COUNT: int = 20              # Track top 20 wallets
+COPY_TRADE_TOP_WALLETS_COUNT: int = 10              # Track top 10 most profitable wallets
 COPY_TRADE_MIN_WALLET_TRADES: int = 10              # Skip wallets with <10 trades in 30d
 COPY_TRADE_MIN_RESOLUTION_HOURS: float = 1.0        # Skip markets resolving within 1hr
 COPY_TRADE_MAX_SPREAD_PCT: float = 0.10             # Skip if spread > 10%

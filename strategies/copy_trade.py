@@ -33,7 +33,7 @@ class CopyTradeStrategy:
     Monitors top-performing Polymarket wallets and replicates their trades.
 
     Flow:
-    1. Fetch top 20 wallets by monthly PnL from the Polymarket leaderboard API.
+    1. Fetch top 10 wallets by monthly PnL from the Polymarket leaderboard API.
     2. Poll their current positions every 60s via data-api.
     3. When a tracked wallet opens a NEW position, mirror it with risk caps.
     4. Log all decisions and outcomes to the database.
