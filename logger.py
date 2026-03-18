@@ -171,11 +171,38 @@ class StrategyDocLogger:
 
     async def _generate_observations(self, stats: dict[str, Any]) -> str:
         """Generate the free-form observations section based on data patterns."""
+        parts: list[str] = []
+
+        # ── User field observations (from dashboard) ─────────────────────────
+        try:
+            user_obs = await self._db.execute_fetchall(
+                "SELECT created_at, source, market_tag, text "
+                "FROM observations ORDER BY created_at DESC LIMIT 50"
+            )
+        except Exception:
+            user_obs = []
+
+        if user_obs:
+            parts.append("### Field Observations\n")
+            for row in user_obs:
+                ts = row["created_at"][:16].replace("T", " ") + " UTC"
+                src = row["source"] or "manual"
+                tag = f" · #{row['market_tag']}" if row.get("market_tag") else ""
+                parts.append(f"**{ts}** · {src}{tag}")
+                parts.append(f"> {row['text']}\n")
+            parts.append("")
+
+        # ── Agent auto-generated analysis ────────────────────────────────────
         observations: list[str] = []
 
         total = stats["total_trades"]
         if total == 0:
-            return "*Agent is collecting data. Observations will appear after the first trades resolve.*"
+            if not user_obs:
+                return (
+                    "*Agent is collecting data. "
+                    "Observations will appear after the first trades resolve.*"
+                )
+            return "\n".join(parts)
 
         # Win rate observation
         wr = stats["win_rate"]
@@ -201,7 +228,6 @@ class StrategyDocLogger:
                     f"generating ${best['pnl']:.2f} P&L across {best['trades']} trades."
                 )
 
-            # Check for consistently losing wallets
             losers = [c for c in stats["copy_stats"] if c["pnl"] < 0]
             if losers:
                 observations.append(
@@ -220,12 +246,10 @@ class StrategyDocLogger:
                 f"{len(faded)} faded, {len(skipped)} skipped."
             )
 
-            # Check if wall detection is predictive
             wall_spikes = [s for s in spikes if s.get("price_wall")]
             if wall_spikes:
                 correct = sum(
-                    1 for s in wall_spikes
-                    if s.get("outcome_correct")
+                    1 for s in wall_spikes if s.get("outcome_correct")
                 )
                 total_resolved = sum(
                     1 for s in wall_spikes
@@ -244,7 +268,10 @@ class StrategyDocLogger:
                 "Will update observations as trades resolve."
             )
 
-        return "\n".join(observations)
+        if parts:
+            parts.append("### Agent Analysis\n")
+        parts.extend(observations)
+        return "\n".join(parts)
 
     # ── GitHub API ──────────────────────────────────────────────────────────
 

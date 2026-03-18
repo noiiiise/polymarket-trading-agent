@@ -242,6 +242,100 @@
     border-top: 1px solid var(--border);
   }
   .sub-label:first-child { border-top: none; }
+
+  /* ── Observations panel ──────────────────────────────────────────── */
+  .obs-form {
+    padding: 16px;
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+    align-items: end;
+  }
+  @media (max-width: 900px) {
+    .obs-form { grid-template-columns: 1fr; }
+  }
+  .obs-form-full { grid-column: 1 / -1; }
+  .field-group { display: flex; flex-direction: column; gap: 4px; }
+  .field-label {
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--dim);
+  }
+  .field-input, .field-select, .field-textarea {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 7px 10px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .field-input:focus, .field-select:focus, .field-textarea:focus {
+    border-color: var(--accent);
+  }
+  .field-select { cursor: pointer; }
+  .field-textarea {
+    resize: vertical;
+    min-height: 64px;
+    line-height: 1.5;
+  }
+  .btn-submit {
+    background: var(--accent);
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 8px 18px;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+    align-self: end;
+  }
+  .btn-submit:hover { opacity: 0.85; }
+  .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+  #obs-status {
+    font-size: 11px;
+    padding: 4px 0 0;
+    color: var(--green);
+    min-height: 16px;
+  }
+  #obs-status.err { color: var(--red); }
+
+  /* observation feed */
+  .obs-feed {
+    display: flex; flex-direction: column; gap: 0;
+    max-height: 380px; overflow-y: auto;
+    padding: 8px 0;
+  }
+  .obs-feed::-webkit-scrollbar { width: 6px; }
+  .obs-feed::-webkit-scrollbar-track { background: transparent; }
+  .obs-feed::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 3px; }
+
+  .obs-entry {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0 12px;
+  }
+  .obs-entry:last-child { border-bottom: none; }
+  .obs-meta {
+    font-size: 10px; color: var(--dim);
+    line-height: 1.6; white-space: nowrap;
+    padding-top: 1px;
+  }
+  .obs-meta .obs-source { color: var(--cyan); font-weight: 600; }
+  .obs-meta .obs-tag { color: var(--purple); }
+  .obs-text {
+    font-size: 12.5px; color: var(--text);
+    line-height: 1.6;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
 </style>
 </head>
 <body>
@@ -365,6 +459,51 @@
       <div id="strategy-doc">Loading…</div>
     </div>
 
+  </div>
+
+  <!-- ── Field Observations ───────────────────────────────────────────── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Observations &amp; Adaptations</span>
+      <span style="font-size:10px;color:var(--dim)">from X / research</span>
+    </div>
+
+    <!-- Input form -->
+    <div class="obs-form">
+      <div class="field-group">
+        <label class="field-label" for="obs-source">Source</label>
+        <select class="field-select" id="obs-source">
+          <option value="X/Twitter">X / Twitter</option>
+          <option value="Research">Research</option>
+          <option value="News">News</option>
+          <option value="Manual">Manual</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="obs-tag">Market tag (optional)</label>
+        <input class="field-input" id="obs-tag" type="text" placeholder="e.g. Trump2024, NBA, crypto">
+      </div>
+      <div></div><!-- spacer for submit alignment -->
+
+      <div class="field-group obs-form-full">
+        <label class="field-label" for="obs-text">Observation</label>
+        <textarea class="field-textarea" id="obs-text"
+          placeholder="Paste what you saw on X — alpha, narrative shifts, smart money signals, unusual activity…"></textarea>
+      </div>
+
+      <div class="obs-form-full" style="display:flex;align-items:center;gap:12px">
+        <button class="btn-submit" id="obs-submit" onclick="submitObservation()">
+          Save Observation
+        </button>
+        <span id="obs-status"></span>
+      </div>
+    </div>
+
+    <!-- Feed of past observations -->
+    <div class="sub-label">Past observations</div>
+    <div class="obs-feed" id="obs-feed">
+      <div class="empty">No observations yet</div>
+    </div>
   </div>
 
 </main>
@@ -597,20 +736,91 @@ function renderStrategyDoc(d) {
   document.getElementById('strategy-doc').innerHTML = renderMarkdown(d.content);
 }
 
+// ── Render Observations ────────────────────────────────────────────────────
+function renderObservations(d) {
+  if (!d) return;
+  const feed = document.getElementById('obs-feed');
+  if (!d.observations || !d.observations.length) {
+    feed.innerHTML = '<div class="empty">No observations yet — add your first one above</div>';
+    return;
+  }
+  feed.innerHTML = d.observations.map(o => {
+    const ts = fmtDate(o.created_at);
+    const tag = o.market_tag ? `<span class="obs-tag"> · #${escHtml(o.market_tag)}</span>` : '';
+    return `<div class="obs-entry">
+      <div class="obs-meta">
+        <span class="obs-source">${escHtml(o.source)}</span>${tag}<br>${ts}
+      </div>
+      <div class="obs-text">${escHtml(o.text)}</div>
+    </div>`;
+  }).join('');
+}
+
+async function submitObservation() {
+  const btn    = document.getElementById('obs-submit');
+  const status = document.getElementById('obs-status');
+  const text   = document.getElementById('obs-text').value.trim();
+  const source = document.getElementById('obs-source').value;
+  const tag    = document.getElementById('obs-tag').value.trim();
+
+  if (!text) {
+    status.textContent = 'Please enter an observation.';
+    status.className = 'err';
+    return;
+  }
+
+  btn.disabled = true;
+  status.textContent = 'Saving…';
+  status.className = '';
+
+  try {
+    const resp = await fetch('/api/observations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, source, market_tag: tag }),
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      document.getElementById('obs-text').value = '';
+      document.getElementById('obs-tag').value = '';
+      status.textContent = '✓ Saved — syncing to Strategy Doc & GitHub';
+      status.className = '';
+      // Refresh observations feed and strategy doc immediately
+      const [obs, doc] = await Promise.all([
+        fetchJSON('/api/observations'),
+        fetchJSON('/api/strategy_doc'),
+      ]);
+      renderObservations(obs);
+      renderStrategyDoc(doc);
+    } else {
+      status.textContent = data.error || 'Failed to save.';
+      status.className = 'err';
+    }
+  } catch (e) {
+    status.textContent = 'Network error — try again.';
+    status.className = 'err';
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { status.textContent = ''; status.className = ''; }, 5000);
+  }
+}
+
 // ── Refresh all panels ─────────────────────────────────────────────────────
 async function refreshAll() {
-  const [overview, copyTrades, spikes, logs, doc] = await Promise.all([
+  const [overview, copyTrades, spikes, logs, doc, obs] = await Promise.all([
     fetchJSON('/api/overview'),
     fetchJSON('/api/copy_trades'),
     fetchJSON('/api/volume_spikes'),
     fetchJSON('/api/logs'),
     fetchJSON('/api/strategy_doc'),
+    fetchJSON('/api/observations'),
   ]);
   renderOverview(overview);
   renderCopyTrades(copyTrades);
   renderSpikes(spikes);
   renderLog(logs);
   renderStrategyDoc(doc);
+  renderObservations(obs);
 }
 
 // ── Countdown timer ────────────────────────────────────────────────────────

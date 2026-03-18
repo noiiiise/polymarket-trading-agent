@@ -148,6 +148,18 @@ CREATE TABLE IF NOT EXISTS doc_updates (
     update_type     TEXT NOT NULL,
     content_hash    TEXT NOT NULL
 );
+
+-- User field observations submitted via the dashboard
+CREATE TABLE IF NOT EXISTS observations (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at  TEXT NOT NULL,
+    source      TEXT NOT NULL DEFAULT 'X/Twitter',
+    market_tag  TEXT NOT NULL DEFAULT '',
+    text        TEXT NOT NULL,
+    acted_on    INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_observations_created ON observations(created_at);
 """
 
 

@@ -4,13 +4,16 @@ Reads directly from the SQLite database (WAL mode allows concurrent reads).
 Serves on localhost:5000.
 """
 
+import base64
+import json
 import os
 import sqlite3
 import threading
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 
 import config
 
@@ -214,6 +217,139 @@ def strategy_doc():
     else:
         content = "_STRATEGY_DOC.md not yet generated._"
     return jsonify({"content": content})
+
+
+@app.route("/api/observations")
+def get_observations():
+    db = _db()
+    try:
+        _ensure_observations_table(db)
+        obs = _rows(db,
+            "SELECT id, created_at, source, market_tag, text, acted_on "
+            "FROM observations ORDER BY created_at DESC"
+        )
+        return jsonify({"observations": obs})
+    finally:
+        db.close()
+
+
+@app.route("/api/observations", methods=["POST"])
+def add_observation():
+    data = request.get_json(force=True) or {}
+    text = (data.get("text") or "").strip()
+    source = (data.get("source") or "X/Twitter").strip()
+    market_tag = (data.get("market_tag") or "").strip()
+
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    db = _db()
+    try:
+        _ensure_observations_table(db)
+        db.execute(
+            "INSERT INTO observations (created_at, source, market_tag, text) VALUES (?, ?, ?, ?)",
+            (now, source, market_tag, text),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    _inject_observation_into_doc(text, source, market_tag, now)
+    return jsonify({"ok": True, "created_at": now})
+
+
+# ── Observation helpers ───────────────────────────────────────────────────────
+
+def _ensure_observations_table(db: sqlite3.Connection) -> None:
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS observations (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at  TEXT NOT NULL,
+            source      TEXT NOT NULL DEFAULT 'X/Twitter',
+            market_tag  TEXT NOT NULL DEFAULT '',
+            text        TEXT NOT NULL,
+            acted_on    INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    db.commit()
+
+
+def _inject_observation_into_doc(
+    text: str, source: str, market_tag: str, timestamp: str
+) -> None:
+    """Prepend a new user observation into STRATEGY_DOC.md and push to GitHub."""
+    doc_path = Path(config.STRATEGY_DOC_PATH)
+    ts = timestamp[:16].replace("T", " ") + " UTC"
+    tag_line = f" · #{market_tag}" if market_tag else ""
+
+    entry = f"\n**{ts}** · {source}{tag_line}\n\n> {text}\n"
+
+    try:
+        content = doc_path.read_text(encoding="utf-8") if doc_path.exists() else ""
+
+        MARKER = "## Observations & Adaptations"
+        if MARKER in content:
+            idx = content.index(MARKER) + len(MARKER)
+            content = content[:idx] + entry + content[idx:]
+        else:
+            content += f"\n{MARKER}\n{entry}"
+
+        doc_path.write_text(content, encoding="utf-8")
+        _push_doc_to_github(content)
+    except Exception as e:
+        app.logger.error("Failed to inject observation into STRATEGY_DOC.md: %s", e)
+
+
+def _push_doc_to_github(content: str) -> None:
+    """Synchronously push STRATEGY_DOC.md to GitHub via the Contents API."""
+    token = config.GITHUB_TOKEN
+    owner = config.GITHUB_OWNER
+    if not token or not owner:
+        return
+
+    repo = config.GITHUB_REPO
+    branch = config.GITHUB_BRANCH
+    file_path = config.STRATEGY_DOC_PATH
+
+    api_url = (
+        f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}"
+    )
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "polymarket-trading-agent",
+        "Content-Type": "application/json",
+    }
+
+    current_sha: str | None = None
+    try:
+        req = urllib.request.Request(
+            f"{api_url}?ref={branch}", headers=headers
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            current_sha = json.loads(resp.read()).get("sha")
+    except Exception:
+        pass
+
+    payload: dict = {
+        "message": "[dashboard] Add field observation",
+        "content": base64.b64encode(content.encode()).decode(),
+        "branch": branch,
+    }
+    if current_sha:
+        payload["sha"] = current_sha
+
+    try:
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            api_url, data=data, headers=headers, method="PUT"
+        )
+        with urllib.request.urlopen(req, timeout=10):
+            pass
+    except Exception as e:
+        app.logger.warning("GitHub push for observation failed: %s", e)
 
 
 # ── Startup helper ────────────────────────────────────────────────────────────
