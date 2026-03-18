@@ -6,3 +6,5 @@ build/
 venv/
 .venv/
 logs/
+.env
+*.db
