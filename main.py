@@ -9,11 +9,11 @@ import logging.handlers
 import os
 import signal
 import sys
+import threading
 from datetime import datetime
 
 import config
 import database
-from dashboard import start_dashboard
 from execution import OrderExecutor
 from logger import StrategyDocLogger
 from strategies.copy_trade import CopyTradeStrategy
@@ -76,11 +76,6 @@ async def run_agent() -> None:
         logger.warning("GITHUB_TOKEN not set — STRATEGY_DOC.md will only update locally")
     if not config.GITHUB_OWNER:
         logger.warning("GITHUB_OWNER not set — GitHub push disabled")
-
-    # Start web dashboard — Railway injects $PORT; default to 8080 locally
-    dashboard_port = int(os.getenv("PORT", "8080"))
-    start_dashboard(port=dashboard_port)
-    logger.info("Dashboard running on http://0.0.0.0:%d", dashboard_port)
 
     # Initialize database
     logger.info("Initializing database at %s", config.SQLITE_DB_PATH)
@@ -178,19 +173,33 @@ async def _daily_summary_loop(
             continue
 
 
-def main() -> None:
-    """Entry point."""
-    setup_logging()
-
-    logger.info("Python %s on %s", sys.version, sys.platform)
-
+def _run_agent_thread() -> None:
+    """Run the async trading agent in a background thread."""
     try:
         asyncio.run(run_agent())
-    except KeyboardInterrupt:
-        logger.info("Interrupted by user")
     except Exception as e:
-        logger.critical("Fatal error: %s", e, exc_info=True)
-        sys.exit(1)
+        logger.critical("Trading agent crashed: %s", e, exc_info=True)
+
+
+def main() -> None:
+    """
+    Entry point.
+    Flask runs in the main thread (required for Railway web services).
+    The async trading agent runs in a background thread.
+    """
+    setup_logging()
+    logger.info("Python %s on %s", sys.version, sys.platform)
+
+    # Start trading agent in background thread
+    agent_thread = threading.Thread(target=_run_agent_thread, name="agent", daemon=True)
+    agent_thread.start()
+    logger.info("Trading agent started in background thread")
+
+    # Run Flask dashboard in the main thread — Railway routes HTTP here
+    from dashboard import app
+    port = int(os.getenv("PORT", "8080"))
+    logger.info("Dashboard starting on http://0.0.0.0:%d", port)
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 
 if __name__ == "__main__":
