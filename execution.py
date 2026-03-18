@@ -17,7 +17,11 @@ import websockets
 
 from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import ApiCreds, OrderArgs, OrderType
-from py_clob_client.order_builder.builder import BUY, SELL
+from py_clob_client.order_builder.builder import (
+    BUY,
+    SELL,
+    CreateOrderOptions,
+)
 from py_clob_client.constants import POLYGON
 
 import config
@@ -25,7 +29,9 @@ import database
 
 logger = logging.getLogger("execution")
 
-# BUY/SELL imported directly from py-clob-client so the type is always correct
+# Emit a one-time log at import time so Railway logs show exactly what
+# constants the running process has loaded.
+logger.info("py-clob-client constants loaded: BUY=%r  SELL=%r", BUY, SELL)
 
 
 class OrderExecutor:
@@ -56,7 +62,26 @@ class OrderExecutor:
         if not config.PAPER_TRADING:
             await self._init_clob_client()
 
-        logger.info("Order executor started (paper=%s)", config.PAPER_TRADING)
+        # Log startup diagnostics so we can verify which code Railway is running.
+        try:
+            import subprocess, sys
+            git_hash = subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                stderr=subprocess.DEVNULL,
+            ).decode().strip()
+        except Exception:
+            git_hash = "unknown"
+
+        try:
+            import importlib.metadata
+            clob_ver = importlib.metadata.version("py-clob-client")
+        except Exception:
+            clob_ver = "unknown"
+
+        logger.info(
+            "Order executor started | paper=%s | git=%s | py-clob-client=%s | BUY=%r SELL=%r",
+            config.PAPER_TRADING, git_hash, clob_ver, BUY, SELL,
+        )
 
     async def _init_clob_client(self) -> None:
         """
@@ -267,18 +292,44 @@ class OrderExecutor:
             "size": size,
         }
 
+    async def _fetch_tick_size(self, token_id: str) -> str:
+        """Async fetch of the minimum tick size for a CLOB token."""
+        url = f"{config.POLYMARKET_REST_BASE}/tick-size"
+        assert self._session is not None
+        async with self._session.get(url, params={"token_id": token_id}) as resp:
+            data = await resp.json()
+            return str(data.get("minimum_tick_size", "0.01"))
+
+    async def _fetch_neg_risk(self, token_id: str) -> bool:
+        """Async fetch of the neg_risk flag for a CLOB token."""
+        url = f"{config.POLYMARKET_REST_BASE}/neg-risk"
+        assert self._session is not None
+        async with self._session.get(url, params={"token_id": token_id}) as resp:
+            data = await resp.json()
+            return bool(data.get("neg_risk", False))
+
     async def _execute_live_order(
         self, order_id: int, token_id: str, side: str, price: float, size: float
     ) -> dict[str, Any]:
         """
         Place a real limit order via py-clob-client.
-        Handles EIP-712 signing, tick-size rounding, and GTC submission.
+
+        Bypasses ClobClient.create_order (which embeds two synchronous HTTP
+        calls for tick-size and neg-risk) and instead calls
+        self._clob_client.builder.create_order directly after fetching those
+        values asynchronously.  This also gives us an explicit log line that
+        shows exactly what BUY/SELL constants are active in the process.
         """
         assert self._clob_client is not None, "CLOB client not initialized"
         loop = asyncio.get_event_loop()
 
-        # Round to valid CLOB tick size (0.01 for most markets)
-        tick = 0.01
+        # Fetch market parameters concurrently (non-blocking async)
+        tick_size_str, neg_risk = await asyncio.gather(
+            self._fetch_tick_size(token_id),
+            self._fetch_neg_risk(token_id),
+        )
+        tick = float(tick_size_str)
+
         price_rounded = round(round(price / tick) * tick, 4)
         size_rounded = round(size, 4)
 
@@ -287,15 +338,29 @@ class OrderExecutor:
         if size_rounded < 1:
             raise ValueError(f"Size {size_rounded} below CLOB minimum of 1 share")
 
+        # Resolve side — always use the constants imported at the top of this
+        # module so the value is guaranteed to match what the builder expects.
+        side_val = BUY if side == "BUY" else SELL
+        logger.info(
+            "Signing order: token=%s side_req=%r side_val=%r BUY=%r SELL=%r "
+            "price=%.4f size=%.4f tick=%s neg_risk=%s",
+            token_id[:16], side, side_val, BUY, SELL,
+            price_rounded, size_rounded, tick_size_str, neg_risk,
+        )
+
         order_args = OrderArgs(
             token_id=token_id,
             price=price_rounded,
             size=size_rounded,
-            side=BUY if side == "BUY" else SELL,
+            side=side_val,
         )
+        options = CreateOrderOptions(tick_size=tick_size_str, neg_risk=neg_risk)
 
+        # builder.create_order only does local EIP-712 signing — no HTTP calls.
+        # Running it in executor keeps the async event loop unblocked.
         signed_order = await loop.run_in_executor(
-            None, functools.partial(self._clob_client.create_order, order_args)
+            None,
+            functools.partial(self._clob_client.builder.create_order, order_args, options),
         )
 
         resp = await loop.run_in_executor(
