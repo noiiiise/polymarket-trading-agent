@@ -44,8 +44,9 @@ class VolumeSpikeStrategy:
 
         # In-memory volume accumulator between DB flushes
         self._volume_accumulator: dict[str, dict[str, float]] = {}
-        # market_id -> {YES: vol, NO: vol}
         self._trade_count_accumulator: dict[str, dict[str, int]] = {}
+        # Tracks last seen cumulative volume per market to compute deltas
+        self._last_market_volumes: dict[str, float] = {}
 
     async def start(self) -> None:
         """Start the volume spike strategy."""
@@ -91,25 +92,36 @@ class VolumeSpikeStrategy:
     # ── Volume Collection ───────────────────────────────────────────────────
 
     async def _collect_volume_data(self) -> None:
-        """Fetch current volume data for active markets."""
+        """
+        Fetch active markets and accumulate DELTA volume since the last poll.
+        The Gamma API returns cumulative total volume, so we subtract the last
+        known value to get volume traded in this interval only.
+        """
         markets = await self._executor.get_active_markets(limit=50)
 
         for market in markets:
-            market_id = market.get("id", market.get("condition_id", ""))
+            # Gamma API uses camelCase conditionId; also handle legacy snake_case
+            market_id = market.get("id") or market.get("conditionId") or market.get("condition_id", "")
             if not market_id:
                 continue
 
-            volume = float(market.get("volume", market.get("volume_num", 0)))
+            total_volume = float(market.get("volume", market.get("volume_num", 0)))
 
-            # Split volume estimate between YES and NO (rough 50/50 if no breakdown)
+            # Compute delta: how much volume was traded since the last poll cycle
+            last_vol = self._last_market_volumes.get(market_id, total_volume)
+            delta_vol = max(0.0, total_volume - last_vol)
+            self._last_market_volumes[market_id] = total_volume
+
+            if delta_vol == 0:
+                continue  # No new volume this cycle — skip accumulation
+
+            if market_id not in self._volume_accumulator:
+                self._volume_accumulator[market_id] = {"YES": 0.0, "NO": 0.0}
+                self._trade_count_accumulator[market_id] = {"YES": 0, "NO": 0}
+
+            # Split delta 50/50 between YES and NO (best estimate without token breakdown)
             for outcome in ["YES", "NO"]:
-                key = f"{market_id}:{outcome}"
-                if market_id not in self._volume_accumulator:
-                    self._volume_accumulator[market_id] = {"YES": 0, "NO": 0}
-                    self._trade_count_accumulator[market_id] = {"YES": 0, "NO": 0}
-
-                # Accumulate volume (divide by 2 for YES/NO split estimate)
-                self._volume_accumulator[market_id][outcome] += volume / 2
+                self._volume_accumulator[market_id][outcome] += delta_vol / 2
                 self._trade_count_accumulator[market_id][outcome] += 1
 
     async def _flush_volume_to_db(self) -> None:
@@ -442,19 +454,23 @@ class VolumeSpikeStrategy:
         result = await self._executor.place_order(
             token_id=token_id,
             market_id=market_id,
+            outcome=trade_outcome,
             side=side,
             price=price,
             size=size_tokens,
             position_id=position_id,
         )
 
-        if result["status"] != "filled":
+        if result["status"] not in ("filled", "pending"):
             await self._db.execute(
                 "UPDATE positions SET status='cancelled' WHERE id=?",
                 (position_id,),
             )
             await self._db.commit()
-            logger.warning("Spike trade order failed for %s", market_id[:12])
+            logger.warning(
+                "Spike trade order failed for %s: %s",
+                market_id[:16], result.get("error"),
+            )
             return None
 
         await self._wallet.refresh()

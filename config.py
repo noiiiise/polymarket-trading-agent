@@ -10,6 +10,8 @@ load_dotenv()
 
 # ── Credentials (from environment) ──────────────────────────────────────────
 POLYMARKET_API_KEY: str = os.getenv("POLYMARKET_API_KEY", "")
+POLYMARKET_API_SECRET: str = os.getenv("POLYMARKET_API_SECRET", "")
+POLYMARKET_API_PASSPHRASE: str = os.getenv("POLYMARKET_API_PASSPHRASE", "")
 POLYMARKET_PRIVATE_KEY: str = os.getenv("POLYMARKET_PRIVATE_KEY", "")
 POLYMARKET_WALLET_ADDRESS: str = os.getenv("POLYMARKET_WALLET_ADDRESS", "")
 GITHUB_TOKEN: str = os.getenv("GITHUB_TOKEN", "")

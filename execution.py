@@ -1,10 +1,10 @@
 """
-Execution layer: WebSocket-based order placement against Polymarket's CLOB.
-All orders are limit orders. Includes retry logic, spread checks, and paper trading simulation.
+Execution layer: real order placement against Polymarket's CLOB via py-clob-client.
+All orders are limit orders (GTC). Includes retry logic and spread checks.
 """
 
 import asyncio
-import hashlib
+import functools
 import json
 import logging
 import time
@@ -15,19 +15,27 @@ import aiohttp
 import aiosqlite
 import websockets
 
+from py_clob_client.client import ClobClient
+from py_clob_client.clob_types import ApiCreds, OrderArgs, OrderType
+from py_clob_client.constants import POLYGON
+
 import config
 import database
 
 logger = logging.getLogger("execution")
 
+# BUY=0, SELL=1 per py-clob-client spec
+_SIDE_BUY = 0
+_SIDE_SELL = 1
+
 
 class OrderExecutor:
     """
     Handles all order execution against Polymarket's CLOB API.
-    - Places limit orders via REST (CLOB doesn't use WS for order placement).
+    - Places limit orders via py-clob-client (handles EIP-712 signing internally).
     - Streams order book data via WebSocket for price discovery.
     - Implements retry logic and spread validation.
-    - Paper trading mode simulates fills at requested price.
+    - Paper trading mode simulates fills without touching live API.
     """
 
     def __init__(self, db: aiosqlite.Connection) -> None:
@@ -35,16 +43,65 @@ class OrderExecutor:
         self._session: aiohttp.ClientSession | None = None
         self._ws: websockets.WebSocketClientProtocol | None = None  # type: ignore[name-defined]
         self._order_book_cache: dict[str, dict[str, Any]] = {}
+        self._clob_client: ClobClient | None = None
         self._running = False
 
     async def start(self) -> None:
-        """Initialize HTTP session and connect to WebSocket."""
+        """Initialize HTTP session and CLOB client for live order execution."""
         self._session = aiohttp.ClientSession(
-            headers=self._auth_headers(),
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
             timeout=aiohttp.ClientTimeout(total=30),
         )
         self._running = True
+
+        if not config.PAPER_TRADING:
+            await self._init_clob_client()
+
         logger.info("Order executor started (paper=%s)", config.PAPER_TRADING)
+
+    async def _init_clob_client(self) -> None:
+        """
+        Initialize the py-clob-client with real credentials.
+        Uses explicit creds from env if provided; otherwise derives them
+        from the private key via EIP-712 signature (same result as Polymarket UI).
+        """
+        loop = asyncio.get_event_loop()
+
+        if config.POLYMARKET_API_SECRET and config.POLYMARKET_API_PASSPHRASE:
+            creds = ApiCreds(
+                api_key=config.POLYMARKET_API_KEY,
+                api_secret=config.POLYMARKET_API_SECRET,
+                api_passphrase=config.POLYMARKET_API_PASSPHRASE,
+            )
+            logger.info("Using explicit API credentials from environment")
+        else:
+            # Derive credentials deterministically from private key.
+            # This produces the same key/secret/passphrase as the Polymarket UI.
+            logger.info("API secret/passphrase not set — deriving from private key...")
+            tmp = ClobClient(
+                host=config.POLYMARKET_REST_BASE,
+                chain_id=POLYGON,
+                key=config.POLYMARKET_PRIVATE_KEY,
+            )
+            try:
+                creds = await loop.run_in_executor(
+                    None, tmp.create_or_derive_api_creds
+                )
+            except AttributeError:
+                # Fallback for older py-clob-client versions
+                creds = await loop.run_in_executor(None, tmp.derive_api_key)
+            logger.info(
+                "API credentials derived (key=%s...)", creds.api_key[:8] if creds else "?"
+            )
+
+        self._clob_client = ClobClient(
+            host=config.POLYMARKET_REST_BASE,
+            chain_id=POLYGON,
+            key=config.POLYMARKET_PRIVATE_KEY,
+            creds=creds,
+            funder=config.POLYMARKET_WALLET_ADDRESS or None,
+        )
+        logger.info("CLOB client initialized")
 
     async def stop(self) -> None:
         """Clean shutdown."""
@@ -55,22 +112,12 @@ class OrderExecutor:
             await self._session.close()
         logger.info("Order executor stopped")
 
-    def _auth_headers(self) -> dict[str, str]:
-        """Build authentication headers for Polymarket CLOB API."""
-        headers: dict[str, str] = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
-        if config.POLYMARKET_API_KEY:
-            headers["Authorization"] = f"Bearer {config.POLYMARKET_API_KEY}"
-        return headers
-
     # ── Order Book ──────────────────────────────────────────────────────────
 
     async def get_order_book(self, token_id: str) -> dict[str, Any]:
         """
-        Fetch current order book for a token (outcome) from CLOB REST API.
-        Returns: {bids: [{price, size}], asks: [{price, size}], spread, mid_price, best_bid, best_ask}
+        Fetch current order book for a token from CLOB REST API.
+        Returns: {bids, asks, spread, mid_price, best_bid, best_ask}
         """
         if config.PAPER_TRADING:
             return self._simulated_order_book(token_id)
@@ -84,15 +131,13 @@ class OrderExecutor:
                 if resp.status != 200:
                     logger.error("Order book fetch failed: %d", resp.status)
                     return self._empty_order_book()
-
                 data = await resp.json()
                 return self._parse_order_book(data)
         except Exception as e:
-            logger.error("Order book error for %s: %s", token_id, e)
+            logger.error("Order book error for %s: %s", token_id[:16], e)
             return self._empty_order_book()
 
     def _parse_order_book(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Parse raw CLOB order book response."""
         bids = [
             {"price": float(b.get("price", 0)), "size": float(b.get("size", 0))}
             for b in data.get("bids", [])
@@ -101,8 +146,6 @@ class OrderExecutor:
             {"price": float(a.get("price", 0)), "size": float(a.get("size", 0))}
             for a in data.get("asks", [])
         ]
-
-        # Sort: bids descending, asks ascending
         bids.sort(key=lambda x: x["price"], reverse=True)
         asks.sort(key=lambda x: x["price"])
 
@@ -112,154 +155,99 @@ class OrderExecutor:
         mid_price = (best_bid + best_ask) / 2 if (best_bid + best_ask) > 0 else 0.5
 
         return {
-            "bids": bids,
-            "asks": asks,
-            "best_bid": best_bid,
-            "best_ask": best_ask,
-            "spread": spread,
-            "mid_price": mid_price,
+            "bids": bids, "asks": asks,
+            "best_bid": best_bid, "best_ask": best_ask,
+            "spread": spread, "mid_price": mid_price,
         }
 
     def _simulated_order_book(self, token_id: str) -> dict[str, Any]:
-        """Generate a realistic simulated order book for paper trading."""
-        # Use token_id hash for deterministic but varied prices
+        import hashlib
         h = int(hashlib.md5(token_id.encode()).hexdigest()[:8], 16)
-        base_price = 0.30 + (h % 40) / 100  # 0.30 to 0.70 range
-
+        base_price = 0.30 + (h % 40) / 100
         spread = 0.01
         best_bid = round(base_price - spread / 2, 4)
         best_ask = round(base_price + spread / 2, 4)
-
-        bids = [
-            {"price": round(best_bid - i * 0.005, 4), "size": 100 + i * 50}
-            for i in range(5)
-        ]
-        asks = [
-            {"price": round(best_ask + i * 0.005, 4), "size": 100 + i * 50}
-            for i in range(5)
-        ]
-
+        bids = [{"price": round(best_bid - i * 0.005, 4), "size": 100 + i * 50} for i in range(5)]
+        asks = [{"price": round(best_ask + i * 0.005, 4), "size": 100 + i * 50} for i in range(5)]
         return {
-            "bids": bids,
-            "asks": asks,
-            "best_bid": best_bid,
-            "best_ask": best_ask,
-            "spread": spread,
-            "mid_price": round((best_bid + best_ask) / 2, 4),
+            "bids": bids, "asks": asks,
+            "best_bid": best_bid, "best_ask": best_ask,
+            "spread": spread, "mid_price": round((best_bid + best_ask) / 2, 4),
         }
 
     def _empty_order_book(self) -> dict[str, Any]:
-        return {
-            "bids": [], "asks": [],
-            "best_bid": 0.0, "best_ask": 1.0,
-            "spread": 1.0, "mid_price": 0.5,
-        }
+        return {"bids": [], "asks": [], "best_bid": 0.0, "best_ask": 1.0,
+                "spread": 1.0, "mid_price": 0.5}
 
     # ── Price Calculation ───────────────────────────────────────────────────
 
-    def calculate_limit_price(
-        self, order_book: dict[str, Any], side: str
-    ) -> float:
+    def calculate_limit_price(self, order_book: dict[str, Any], side: str) -> float:
         """
-        Determine limit price based on spread rules:
-        - If spread <= 2%: use best price (best_ask for buy, best_bid for sell).
-        - If spread > 2%: use mid-price.
+        Best price if spread <= 2%, mid-price otherwise.
         """
-        spread_pct = order_book["spread"]
-
-        if spread_pct <= config.MAX_SPREAD_FOR_BEST_PRICE_PCT:
-            if side == "BUY":
-                return order_book["best_ask"]
-            else:
-                return order_book["best_bid"]
-        else:
-            return order_book["mid_price"]
+        if order_book["spread"] <= config.MAX_SPREAD_FOR_BEST_PRICE_PCT:
+            return order_book["best_ask"] if side == "BUY" else order_book["best_bid"]
+        return order_book["mid_price"]
 
     # ── Order Placement ─────────────────────────────────────────────────────
-
-    # NOTE: When placing real orders, always pass tick_size and neg_risk:
-    # tick_size="0.01" for most markets, neg_risk=False
-    # The CLOB API will reject orders without proper tick size.
 
     async def place_order(
         self,
         token_id: str,
         market_id: str,
+        outcome: str,
         side: str,
         price: float,
         size: float,
         position_id: int | None = None,
     ) -> dict[str, Any]:
         """
-        Place a limit order. Returns execution result.
-        Retries once on failure, then logs and skips.
+        Place a limit order. Returns execution result dict with 'status' key.
+        Retries once on transient failure.
         """
-        # Log order attempt
         order_id = await database.insert_order(
-            self._db, position_id, market_id,
-            "YES",  # Will be refined when we know the outcome
-            side, price, size,
+            self._db, position_id, market_id, outcome, side, price, size,
         )
 
         for attempt in range(config.ORDER_MAX_RETRIES + 1):
             try:
                 if config.PAPER_TRADING:
-                    result = await self._simulate_fill(
-                        order_id, token_id, side, price, size
-                    )
+                    result = await self._simulate_fill(order_id, token_id, side, price, size)
                 else:
-                    result = await self._execute_live_order(
-                        order_id, token_id, side, price, size
-                    )
+                    result = await self._execute_live_order(order_id, token_id, side, price, size)
 
-                if result["status"] == "filled":
-                    await database.update_order_status(
-                        self._db, order_id, "filled",
-                        polymarket_order_id=result.get("order_id"),
-                    )
-                    logger.info(
-                        "Order filled: %s %s %.4f @ $%.4f (order_id=%s)",
-                        side, token_id[:12], size, price, result.get("order_id", "paper"),
-                    )
-                    return result
-
-                # If not filled but no error, treat as pending/cancelled
+                final_status = result.get("status", "failed")
                 await database.update_order_status(
-                    self._db, order_id, result.get("status", "cancelled"),
+                    self._db, order_id, final_status,
+                    polymarket_order_id=result.get("order_id"),
                 )
+
+                if final_status in ("filled", "pending"):
+                    logger.info(
+                        "Order %s: %s %s %.4f @ $%.4f (polymarket_id=%s)",
+                        final_status, side, token_id[:16], size, price,
+                        result.get("order_id", "paper"),
+                    )
                 return result
 
             except Exception as e:
-                logger.warning(
-                    "Order attempt %d failed for %s: %s",
-                    attempt + 1, token_id[:12], e,
-                )
+                logger.warning("Order attempt %d failed for %s: %s", attempt + 1, token_id[:16], e)
                 if attempt < config.ORDER_MAX_RETRIES:
                     await asyncio.sleep(config.ORDER_RETRY_DELAY_SEC)
                 else:
                     await database.update_order_status(
-                        self._db, order_id, "failed",
-                        error_message=str(e),
+                        self._db, order_id, "failed", error_message=str(e)
                     )
-                    logger.error(
-                        "Order permanently failed after %d attempts: %s",
-                        attempt + 1, e,
-                    )
+                    logger.error("Order permanently failed after %d attempts: %s", attempt + 1, e)
                     return {"status": "failed", "error": str(e)}
 
-        return {"status": "failed", "error": "Max retries exceeded"}
+        return {"status": "failed", "error": "max retries exceeded"}
 
     async def _simulate_fill(
-        self,
-        order_id: int,
-        token_id: str,
-        side: str,
-        price: float,
-        size: float,
+        self, order_id: int, token_id: str, side: str, price: float, size: float
     ) -> dict[str, Any]:
-        """Simulate an immediate fill for paper trading."""
         logger.info(
-            "[PAPER] Simulated fill: %s %.2f units @ $%.4f (token=%s)",
+            "[PAPER] Simulated fill: %s %.2f @ $%.4f (token=%s)",
             side, size, price, token_id[:16],
         )
         return {
@@ -267,171 +255,165 @@ class OrderExecutor:
             "order_id": f"paper-{order_id}",
             "price": price,
             "size": size,
-            "filled_at": datetime.utcnow().isoformat(),
         }
 
     async def _execute_live_order(
-        self,
-        order_id: int,
-        token_id: str,
-        side: str,
-        price: float,
-        size: float,
+        self, order_id: int, token_id: str, side: str, price: float, size: float
     ) -> dict[str, Any]:
         """
-        Place a real limit order via Polymarket CLOB REST API.
-        Uses API key auth + signed order payload.
+        Place a real limit order via py-clob-client.
+        Handles EIP-712 signing, tick-size rounding, and GTC submission.
         """
-        assert self._session is not None
+        assert self._clob_client is not None, "CLOB client not initialized"
+        loop = asyncio.get_event_loop()
 
-        # Build order payload per CLOB API spec
-        order_payload = {
-            "tokenID": token_id,
-            "price": str(price),
-            "size": str(size),
-            "side": side.upper(),
-            "type": "GTC",  # Good-til-cancelled
+        # Round to valid CLOB tick size (0.01 for most markets)
+        tick = 0.01
+        price_rounded = round(round(price / tick) * tick, 4)
+        size_rounded = round(size, 4)
+
+        if price_rounded <= 0 or price_rounded >= 1:
+            raise ValueError(f"Price {price_rounded} out of valid range (0, 1)")
+        if size_rounded < 1:
+            raise ValueError(f"Size {size_rounded} below CLOB minimum of 1 share")
+
+        order_args = OrderArgs(
+            token_id=token_id,
+            price=price_rounded,
+            size=size_rounded,
+            side=_SIDE_BUY if side == "BUY" else _SIDE_SELL,
+        )
+
+        signed_order = await loop.run_in_executor(
+            None, functools.partial(self._clob_client.create_order, order_args)
+        )
+
+        resp = await loop.run_in_executor(
+            None,
+            functools.partial(self._clob_client.post_order, signed_order, OrderType.GTC),
+        )
+
+        if resp.get("errorMsg"):
+            raise RuntimeError(f"CLOB rejected order: {resp['errorMsg']}")
+
+        order_status = resp.get("status", "")
+        # "matched" = immediately filled; "delayed" = GTC sitting in book — both are success
+        success = resp.get("success") is True or order_status in ("matched", "delayed")
+
+        return {
+            "status": "filled" if success else "failed",
+            "order_id": resp.get("orderID", ""),
+            "price": price_rounded,
+            "size": size_rounded,
+            "clob_status": order_status,
         }
-
-        # Sign the order with private key
-        if config.POLYMARKET_PRIVATE_KEY:
-            order_payload["signature"] = self._sign_order(order_payload)
-
-        url = f"{config.POLYMARKET_REST_BASE}/order"
-
-        async with self._session.post(url, json=order_payload) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                return {
-                    "status": "filled" if data.get("success") else "failed",
-                    "order_id": data.get("orderID", ""),
-                    "price": price,
-                    "size": size,
-                }
-            else:
-                body = await resp.text()
-                raise RuntimeError(
-                    f"CLOB order failed ({resp.status}): {body}"
-                )
-
-    def _sign_order(self, payload: dict[str, Any]) -> str:
-        """
-        Sign order payload with private key.
-        In production, this uses EIP-712 typed data signing.
-        Placeholder: actual signing requires py_clob_client or web3.py.
-        """
-        # This is a placeholder — real signing uses the py-clob-client library
-        # or manual EIP-712 signing with the private key.
-        # The actual implementation would be:
-        #   from py_clob_client.clob_types import OrderArgs
-        #   from py_clob_client.order_builder import OrderBuilder
-        #   builder = OrderBuilder(private_key, chain_id=137)
-        #   signed = builder.create_order(args)
-        logger.debug("Order signing placeholder — use py_clob_client for production")
-        return "0x_placeholder_signature"
 
     # ── Market Data Helpers ─────────────────────────────────────────────────
 
     async def get_market_info(self, market_id: str) -> dict[str, Any] | None:
-        """Fetch market details from Polymarket Gamma API."""
+        """
+        Fetch market details from Polymarket Gamma API.
+        Handles both hex condition IDs (0x...) and Gamma integer IDs.
+        """
         if config.PAPER_TRADING:
             return self._simulated_market(market_id)
 
-        url = f"{config.POLYMARKET_GAMMA_API}/markets/{market_id}"
+        # Condition IDs (from CLOB / positions API) start with 0x
+        # Gamma API supports querying by condition_id as a query param
+        if market_id.startswith("0x"):
+            url = f"{config.POLYMARKET_GAMMA_API}/markets"
+            params: dict[str, Any] = {"condition_id": market_id}
+        else:
+            url = f"{config.POLYMARKET_GAMMA_API}/markets/{market_id}"
+            params = {}
+
         try:
             assert self._session is not None
-            async with self._session.get(url) as resp:
+            async with self._session.get(url, params=params) as resp:
                 if resp.status == 200:
-                    return await resp.json()
+                    data = await resp.json()
+                    if isinstance(data, list) and data:
+                        return data[0]
+                    if isinstance(data, dict):
+                        return data
+                else:
+                    logger.debug("Market info %d for %s", resp.status, market_id[:16])
                 return None
         except Exception as e:
-            logger.error("Failed to fetch market %s: %s", market_id, e)
+            logger.error("Market info fetch error for %s: %s", market_id[:16], e)
             return None
 
     async def get_active_markets(self, limit: int = 100) -> list[dict[str, Any]]:
-        """Fetch list of active markets from Gamma API."""
+        """Fetch active markets from Gamma API sorted by volume."""
         if config.PAPER_TRADING:
             return self._simulated_active_markets(limit)
 
         url = f"{config.POLYMARKET_GAMMA_API}/markets"
-        params = {"limit": limit, "active": "true", "closed": "false"}
+        params = {
+            "limit": limit,
+            "active": "true",
+            "closed": "false",
+            "order": "volume",
+            "ascending": "false",
+        }
         try:
             assert self._session is not None
             async with self._session.get(url, params=params) as resp:
                 if resp.status == 200:
                     return await resp.json()  # type: ignore[no-any-return]
+                logger.error("Active markets fetch failed: %d", resp.status)
                 return []
         except Exception as e:
-            logger.error("Failed to fetch active markets: %s", e)
+            logger.error("Active markets fetch error: %s", e)
             return []
 
     def _simulated_market(self, market_id: str) -> dict[str, Any]:
-        """Generate a simulated market for paper trading."""
         return {
             "id": market_id,
             "question": f"Simulated Market {market_id[:8]}",
             "slug": f"simulated-{market_id[:8]}",
-            "active": True,
-            "closed": False,
-            "end_date_iso": "2025-12-31T00:00:00Z",
+            "active": True, "closed": False,
+            "end_date_iso": "2027-12-31T00:00:00Z",
             "tokens": [
                 {"token_id": f"{market_id}-yes", "outcome": "Yes"},
                 {"token_id": f"{market_id}-no", "outcome": "No"},
             ],
             "volume": 50000,
-            "volume_num": 50000,
         }
 
     def _simulated_active_markets(self, limit: int) -> list[dict[str, Any]]:
-        """Generate simulated active markets for paper trading."""
+        categories = ["politics", "crypto", "sports", "tech", "economy",
+                      "science", "entertainment", "world", "finance", "climate"]
         markets = []
-        categories = [
-            "politics", "crypto", "sports", "tech", "economy",
-            "science", "entertainment", "world", "finance", "climate",
-        ]
         for i in range(min(limit, 20)):
             mid = f"sim-market-{i:04d}"
             markets.append({
-                "id": mid,
-                "condition_id": mid,
+                "id": mid, "conditionId": mid,
                 "question": f"Will {categories[i % len(categories)]} event {i} happen?",
                 "slug": f"sim-{categories[i % len(categories)]}-{i}",
-                "active": True,
-                "closed": False,
-                "end_date_iso": "2025-12-31T00:00:00Z",
+                "active": True, "closed": False,
+                "end_date_iso": "2027-12-31T00:00:00Z",
                 "tokens": [
                     {"token_id": f"{mid}-yes", "outcome": "Yes"},
                     {"token_id": f"{mid}-no", "outcome": "No"},
                 ],
                 "volume": 10000 + i * 5000,
-                "volume_num": 10000 + i * 5000,
             })
         return markets
 
     # ── WebSocket Order Book Stream ─────────────────────────────────────────
 
-    async def stream_order_books(
-        self, token_ids: list[str], callback: Any
-    ) -> None:
-        """
-        Connect to Polymarket WebSocket and stream order book updates.
-        Calls callback(token_id, order_book_update) on each message.
-        """
+    async def stream_order_books(self, token_ids: list[str], callback: Any) -> None:
+        """Connect to Polymarket WebSocket and stream order book updates."""
         if config.PAPER_TRADING:
-            logger.info("[PAPER] WebSocket streaming simulated — using polling")
+            logger.info("[PAPER] WebSocket streaming skipped in paper mode")
             return
 
         while self._running:
             try:
                 async with websockets.connect(config.POLYMARKET_WS_URL) as ws:  # type: ignore[attr-defined]
                     self._ws = ws
-
-                    # Subscribe to order book channels
-                    sub_msg = {
-                        "type": "subscribe",
-                        "channel": "book",
-                        "assets_ids": token_ids,
-                    }
+                    sub_msg = {"type": "subscribe", "channel": "book", "assets_ids": token_ids}
                     await ws.send(json.dumps(sub_msg))
                     logger.info("WebSocket subscribed to %d tokens", len(token_ids))
 
