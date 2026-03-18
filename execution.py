@@ -17,11 +17,7 @@ import websockets
 
 from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import ApiCreds, OrderArgs, OrderType
-from py_clob_client.order_builder.builder import (
-    BUY,
-    SELL,
-    CreateOrderOptions,
-)
+from py_clob_client.order_builder.builder import BUY, SELL
 from py_clob_client.constants import POLYGON
 
 import config
@@ -284,44 +280,18 @@ class OrderExecutor:
             "size": size,
         }
 
-    async def _fetch_tick_size(self, token_id: str) -> str:
-        """Async fetch of the minimum tick size for a CLOB token."""
-        url = f"{config.POLYMARKET_REST_BASE}/tick-size"
-        assert self._session is not None
-        async with self._session.get(url, params={"token_id": token_id}) as resp:
-            data = await resp.json()
-            return str(data.get("minimum_tick_size", "0.01"))
-
-    async def _fetch_neg_risk(self, token_id: str) -> bool:
-        """Async fetch of the neg_risk flag for a CLOB token."""
-        url = f"{config.POLYMARKET_REST_BASE}/neg-risk"
-        assert self._session is not None
-        async with self._session.get(url, params={"token_id": token_id}) as resp:
-            data = await resp.json()
-            return bool(data.get("neg_risk", False))
-
     async def _execute_live_order(
         self, order_id: int, token_id: str, side: str, price: float, size: float
     ) -> dict[str, Any]:
         """
         Place a real limit order via py-clob-client.
-
-        Bypasses ClobClient.create_order (which embeds two synchronous HTTP
-        calls for tick-size and neg-risk) and instead calls
-        self._clob_client.builder.create_order directly after fetching those
-        values asynchronously.  This also gives us an explicit log line that
-        shows exactly what BUY/SELL constants are active in the process.
+        Uses ClobClient.create_and_post_order which handles tick-size,
+        neg-risk, fee-rate resolution and EIP-712 signing internally.
         """
         assert self._clob_client is not None, "CLOB client not initialized"
         loop = asyncio.get_event_loop()
 
-        # Fetch market parameters concurrently (non-blocking async)
-        tick_size_str, neg_risk = await asyncio.gather(
-            self._fetch_tick_size(token_id),
-            self._fetch_neg_risk(token_id),
-        )
-        tick = float(tick_size_str)
-
+        tick = 0.01
         price_rounded = round(round(price / tick) * tick, 4)
         size_rounded = round(size, 4)
 
@@ -330,14 +300,10 @@ class OrderExecutor:
         if size_rounded < 1:
             raise ValueError(f"Size {size_rounded} below CLOB minimum of 1 share")
 
-        # Resolve side — always use the constants imported at the top of this
-        # module so the value is guaranteed to match what the builder expects.
         side_val = BUY if side == "BUY" else SELL
         logger.info(
-            "Signing order: token=%s side_req=%r side_val=%r BUY=%r SELL=%r "
-            "price=%.4f size=%.4f tick=%s neg_risk=%s",
-            token_id[:16], side, side_val, BUY, SELL,
-            price_rounded, size_rounded, tick_size_str, neg_risk,
+            "Placing order: token=%s side=%r price=%.4f size=%.4f",
+            token_id[:16], side_val, price_rounded, size_rounded,
         )
 
         order_args = OrderArgs(
@@ -346,25 +312,18 @@ class OrderExecutor:
             size=size_rounded,
             side=side_val,
         )
-        options = CreateOrderOptions(tick_size=tick_size_str, neg_risk=neg_risk)
 
-        # builder.create_order only does local EIP-712 signing — no HTTP calls.
-        # Running it in executor keeps the async event loop unblocked.
-        signed_order = await loop.run_in_executor(
-            None,
-            functools.partial(self._clob_client.builder.create_order, order_args, options),
-        )
-
+        # create_and_post_order handles tick-size, neg-risk, fee-rate, signing,
+        # and posting in one call. Run in executor to keep async loop free.
         resp = await loop.run_in_executor(
             None,
-            functools.partial(self._clob_client.post_order, signed_order, OrderType.GTC),
+            functools.partial(self._clob_client.create_and_post_order, order_args),
         )
 
         if resp.get("errorMsg"):
             raise RuntimeError(f"CLOB rejected order: {resp['errorMsg']}")
 
         order_status = resp.get("status", "")
-        # "matched" = immediately filled; "delayed" = GTC sitting in book — both are success
         success = resp.get("success") is True or order_status in ("matched", "delayed")
 
         return {
