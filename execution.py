@@ -16,7 +16,8 @@ import aiosqlite
 import websockets
 
 from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import ApiCreds, OrderArgs, OrderType, BUY, SELL
+from py_clob_client.clob_types import ApiCreds, OrderArgs, OrderType
+from py_clob_client.order_builder.builder import BUY, SELL
 from py_clob_client.constants import POLYGON
 
 import config
