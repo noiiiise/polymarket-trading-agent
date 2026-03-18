@@ -91,32 +91,24 @@ class OrderExecutor:
         """
         loop = asyncio.get_event_loop()
 
-        if config.POLYMARKET_API_SECRET and config.POLYMARKET_API_PASSPHRASE:
-            creds = ApiCreds(
-                api_key=config.POLYMARKET_API_KEY,
-                api_secret=config.POLYMARKET_API_SECRET,
-                api_passphrase=config.POLYMARKET_API_PASSPHRASE,
+        # Always derive fresh credentials from the private key.
+        # Explicit env-var creds (SECRET/PASSPHRASE) can go stale;
+        # derivation is deterministic and always produces valid creds.
+        logger.info("Deriving API credentials from private key...")
+        tmp = ClobClient(
+            host=config.POLYMARKET_REST_BASE,
+            chain_id=POLYGON,
+            key=config.POLYMARKET_PRIVATE_KEY,
+        )
+        try:
+            creds = await loop.run_in_executor(
+                None, tmp.create_or_derive_api_creds
             )
-            logger.info("Using explicit API credentials from environment")
-        else:
-            # Derive credentials deterministically from private key.
-            # This produces the same key/secret/passphrase as the Polymarket UI.
-            logger.info("API secret/passphrase not set — deriving from private key...")
-            tmp = ClobClient(
-                host=config.POLYMARKET_REST_BASE,
-                chain_id=POLYGON,
-                key=config.POLYMARKET_PRIVATE_KEY,
-            )
-            try:
-                creds = await loop.run_in_executor(
-                    None, tmp.create_or_derive_api_creds
-                )
-            except AttributeError:
-                # Fallback for older py-clob-client versions
-                creds = await loop.run_in_executor(None, tmp.derive_api_key)
-            logger.info(
-                "API credentials derived (key=%s...)", creds.api_key[:8] if creds else "?"
-            )
+        except AttributeError:
+            creds = await loop.run_in_executor(None, tmp.derive_api_key)
+        logger.info(
+            "API credentials derived (key=%s...)", creds.api_key[:8] if creds else "?"
+        )
 
         # funder = the Polymarket proxy wallet address (may differ from signing key).
         # Some py-clob-client versions don't accept this param — fall back gracefully.
