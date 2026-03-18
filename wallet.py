@@ -35,6 +35,12 @@ class WalletManager:
         self._running: bool = False
         self._wallet_address: str = config.POLYMARKET_WALLET_ADDRESS
 
+        # RPC rotation state — start with the primary, then cycle through fallbacks
+        self._rpc_pool: list[str] = [config.POLYGON_RPC_URL] + [
+            u for u in config.POLYGON_RPC_FALLBACKS if u != config.POLYGON_RPC_URL
+        ]
+        self._rpc_index: int = 0
+
         # Paper trading state
         if config.PAPER_TRADING:
             self.balance = config.PAPER_TRADING_INITIAL_BALANCE
@@ -116,18 +122,16 @@ class WalletManager:
 
     async def _fetch_balance_onchain(self) -> float:
         """
-        Fetch USDC.e balance directly from Polygon blockchain via RPC.
-        This is the most reliable method — no API keys needed with 1rpc.io/matic.
+        Fetch USDC.e balance from Polygon via RPC.
+        Rotates through a pool of free public endpoints when one is rate-limited.
         USDC.e has 6 decimals.
         """
         if not self._wallet_address:
             logger.warning("No wallet address configured, returning 0 balance")
             return 0.0
 
-        # Pad address to 64 hex chars (left-pad with zeros) for balanceOf call
         addr_padded = self._wallet_address.replace("0x", "").lower().zfill(64)
         call_data = f"{config.BALANCE_OF_SELECTOR}{addr_padded}"
-
         payload = {
             "jsonrpc": "2.0",
             "method": "eth_call",
@@ -135,25 +139,36 @@ class WalletManager:
             "id": 1,
         }
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    config.POLYGON_RPC_URL,
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        if "result" in data and data["result"] and data["result"] != "0x":
-                            raw = int(data["result"], 16)
-                            balance = raw / 1e6  # USDC.e has 6 decimals
-                            logger.debug("On-chain USDC.e balance: $%.2f", balance)
-                            return balance
-                    else:
-                        logger.warning("RPC returned status %d", resp.status)
-        except Exception as e:
-            logger.error("Failed to fetch on-chain balance: %s", e)
+        # Try each RPC in the pool, starting from the last known-good index
+        attempts = len(self._rpc_pool)
+        for i in range(attempts):
+            idx = (self._rpc_index + i) % attempts
+            rpc_url = self._rpc_pool[idx]
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        rpc_url,
+                        json=payload,
+                        timeout=aiohttp.ClientTimeout(total=8),
+                    ) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            if "result" in data and data["result"] and data["result"] != "0x":
+                                raw = int(data["result"], 16)
+                                balance = raw / 1e6
+                                if idx != self._rpc_index:
+                                    logger.info("RPC rotated to %s", rpc_url)
+                                    self._rpc_index = idx
+                                logger.debug("On-chain USDC.e balance: $%.2f via %s", balance, rpc_url)
+                                return balance
+                        elif resp.status in (429, 403):
+                            logger.debug("RPC %s rate-limited (%d), trying next", rpc_url, resp.status)
+                        else:
+                            logger.debug("RPC %s returned %d", rpc_url, resp.status)
+            except Exception as e:
+                logger.debug("RPC %s failed: %s", rpc_url, e)
 
+        logger.warning("All %d RPC endpoints failed for balance fetch", attempts)
         return 0.0
 
     async def _fetch_balance_gamma(self) -> float:

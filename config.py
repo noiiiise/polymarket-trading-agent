@@ -25,8 +25,17 @@ POLYMARKET_WS_URL: str = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
 POLYMARKET_GAMMA_API: str = "https://gamma-api.polymarket.com"
 
 # Chain / Execution
-# Polygon RPC — 1rpc.io/matic is free and reliable (polygon-rpc.com now requires API key)
+# Primary Polygon RPC — overrideable via env var
 POLYGON_RPC_URL: str = os.getenv("POLYGON_RPC_URL", "https://1rpc.io/matic")
+
+# Free public RPC fallback pool (tried in order when primary is rate-limited)
+POLYGON_RPC_FALLBACKS: list[str] = [
+    "https://polygon.llamarpc.com",
+    "https://polygon.drpc.org",
+    "https://polygon-mainnet.public.blastapi.io",
+    "https://rpc.ankr.com/polygon",
+    "https://polygon-rpc.com",
+]
 CHAIN_ID: int = 137  # Polygon mainnet
 
 # USDC.e on Polygon (what Polymarket uses for collateral)
@@ -56,7 +65,7 @@ VOLUME_SPIKE_FADE_ENABLED: bool = True              # Allow fading noisy spikes
 
 # ── Wallet / Risk Management ────────────────────────────────────────────────
 MAX_TOTAL_EXPOSURE_PCT: float = 0.40                # Total open positions <= 40% of wallet
-BALANCE_REFRESH_INTERVAL_SEC: int = 30              # Refresh wallet balance every 30s
+BALANCE_REFRESH_INTERVAL_SEC: int = 120             # Refresh wallet balance every 2 min
 
 # ── Execution ───────────────────────────────────────────────────────────────
 ORDER_TYPE: str = "limit"                           # Always limit orders, never market
