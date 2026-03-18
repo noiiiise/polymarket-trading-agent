@@ -24,9 +24,9 @@ import database
 
 logger = logging.getLogger("execution")
 
-# BUY=0, SELL=1 per py-clob-client spec
-_SIDE_BUY = 0
-_SIDE_SELL = 1
+# py-clob-client expects string sides
+_SIDE_BUY = "BUY"
+_SIDE_SELL = "SELL"
 
 
 class OrderExecutor:
