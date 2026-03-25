@@ -378,7 +378,7 @@ async def get_strategy_stats(db: aiosqlite.Connection) -> dict[str, Any]:
 
     win_rate = (wins / total_trades * 100) if total_trades > 0 else 0.0
 
-    # Per-wallet copy trade stats
+    # Per-wallet copy trade stats (closed only — for win rate / P&L)
     copy_stats = await db.execute_fetchall(
         """SELECT source_wallet, COUNT(*) as trades,
                   SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
@@ -389,9 +389,35 @@ async def get_strategy_stats(db: aiosqlite.Connection) -> dict[str, Any]:
            ORDER BY pnl DESC"""
     )
 
+    # Open position stats — grouped by source wallet
+    open_by_wallet = await db.execute_fetchall(
+        """SELECT source_wallet,
+                  COUNT(*) as open_count,
+                  COALESCE(SUM(cost_basis), 0) as cost_basis,
+                  MIN(opened_at) as first_opened,
+                  MAX(opened_at) as last_opened
+           FROM positions
+           WHERE strategy='copy_trade' AND status='open' AND source_wallet IS NOT NULL
+           GROUP BY source_wallet
+           ORDER BY cost_basis DESC"""
+    )
+
+    # Open position count and exposure totals
+    open_totals = await db.execute_fetchall(
+        """SELECT COUNT(*) as cnt,
+                  COUNT(DISTINCT market_id) as unique_markets,
+                  COALESCE(SUM(cost_basis), 0) as total_cost
+           FROM positions WHERE status='open'"""
+    )
+
     # Recent spike events
     spike_events = await db.execute_fetchall(
         """SELECT * FROM spike_events ORDER BY detected_at DESC LIMIT 20"""
+    )
+
+    # Orders summary: how many attempted, failed (geo-block etc.)
+    order_summary = await db.execute_fetchall(
+        """SELECT status, COUNT(*) as cnt FROM orders GROUP BY status"""
     )
 
     return {
@@ -399,5 +425,8 @@ async def get_strategy_stats(db: aiosqlite.Connection) -> dict[str, Any]:
         "win_rate": round(win_rate, 1),
         "total_pnl": round(total_pnl, 2),
         "copy_stats": [dict(r) for r in copy_stats],
+        "open_by_wallet": [dict(r) for r in open_by_wallet],
+        "open_totals": dict(open_totals[0]) if open_totals else {"cnt": 0, "unique_markets": 0, "total_cost": 0.0},
         "recent_spikes": [dict(r) for r in spike_events],
+        "order_summary": {row["status"]: row["cnt"] for row in order_summary},
     }

@@ -103,9 +103,22 @@ class StrategyDocLogger:
 
         # Copy trade performance
         doc_parts.append("## Copy Trade Performance\n")
+
+        open_totals = stats.get("open_totals", {})
+        open_cnt = open_totals.get("cnt", 0)
+        unique_markets = open_totals.get("unique_markets", 0)
+        total_cost = open_totals.get("total_cost", 0.0)
+
+        if open_cnt > 0:
+            doc_parts.append(
+                f"**{open_cnt} open position(s)** across {unique_markets} market(s) "
+                f"· total cost basis ${total_cost:,.2f}\n"
+            )
+
         if stats["copy_stats"]:
-            doc_parts.append("| Wallet | Trades Copied | Win Rate | P&L |")
-            doc_parts.append("|--------|--------------|----------|-----|")
+            doc_parts.append("### Resolved Trades by Wallet")
+            doc_parts.append("| Wallet | Trades | Win Rate | P&L |")
+            doc_parts.append("|--------|--------|----------|-----|")
             for cs in stats["copy_stats"]:
                 wallet = cs["source_wallet"][:12] + "..." if cs["source_wallet"] else "unknown"
                 trades = cs["trades"]
@@ -113,9 +126,23 @@ class StrategyDocLogger:
                 wr = f"{wins/trades*100:.0f}%" if trades > 0 else "N/A"
                 pnl = cs["pnl"]
                 doc_parts.append(f"| `{wallet}` | {trades} | {wr} | ${pnl:,.2f} |")
-        else:
-            doc_parts.append("*No copy trades resolved yet.*")
-        doc_parts.append("")
+            doc_parts.append("")
+
+        if stats.get("open_by_wallet"):
+            doc_parts.append("### Open Positions by Source Wallet")
+            doc_parts.append("| Wallet | Open Trades | Cost Basis | First Opened |")
+            doc_parts.append("|--------|-------------|------------|--------------|")
+            for row in stats["open_by_wallet"]:
+                wallet = (row["source_wallet"] or "unknown")[:16] + "..."
+                doc_parts.append(
+                    f"| `{wallet}` | {row['open_count']} | "
+                    f"${row['cost_basis']:,.2f} | {row['first_opened'][:16]} |"
+                )
+            doc_parts.append("")
+
+        if not stats["copy_stats"] and not stats.get("open_by_wallet"):
+            doc_parts.append("*No copy trades recorded yet.*")
+            doc_parts.append("")
 
         # Volume spike learnings
         doc_parts.append("## Volume Spike Learnings\n")
@@ -196,43 +223,78 @@ class StrategyDocLogger:
         observations: list[str] = []
 
         total = stats["total_trades"]
-        if total == 0:
-            if not user_obs:
-                return (
-                    "*Agent is collecting data. "
-                    "Observations will appear after the first trades resolve.*"
+        open_totals = stats.get("open_totals", {})
+        open_cnt = int(open_totals.get("cnt", 0))
+        unique_markets = int(open_totals.get("unique_markets", 0))
+        total_cost = float(open_totals.get("total_cost", 0.0))
+        order_summary = stats.get("order_summary", {})
+
+        # Active operations summary (useful even before trades resolve)
+        if open_cnt > 0:
+            observations.append(
+                f"- Agent has {open_cnt} open position(s) across {unique_markets} unique "
+                f"market(s) with ${total_cost:,.2f} total cost basis. "
+                f"Awaiting resolution to calculate win rate and P&L."
+            )
+
+        # Order execution health
+        failed = order_summary.get("failed", 0)
+        filled = order_summary.get("filled", 0) + order_summary.get("pending", 0)
+        if failed > 0 and filled == 0:
+            observations.append(
+                f"- **Geo-block active:** {failed} order attempt(s) blocked by Polymarket "
+                f"region restriction (HTTP 403). Agent must run from a supported region "
+                f"(e.g. deploy on Railway US region) to execute live trades."
+            )
+        elif failed > 0:
+            fail_rate = failed / (failed + filled) * 100
+            observations.append(
+                f"- Order failure rate: {fail_rate:.0f}% ({failed} failed, {filled} filled/pending). "
+                f"Monitor for region or API key issues."
+            )
+
+        # Copy trade source wallet diversity
+        open_by_wallet = stats.get("open_by_wallet", [])
+        if open_by_wallet:
+            wallet_count = len(open_by_wallet)
+            top_wallet = open_by_wallet[0]
+            top_name = (top_wallet["source_wallet"] or "unknown")[:16]
+            observations.append(
+                f"- Positions sourced from {wallet_count} tracked wallet(s). "
+                f"Largest contributor: `{top_name}...` "
+                f"({top_wallet['open_count']} trade(s), ${top_wallet['cost_basis']:,.2f} cost basis)."
+            )
+
+        # Resolved trade win rate (once data exists)
+        if total > 0:
+            wr = stats["win_rate"]
+            if wr >= 60:
+                observations.append(
+                    f"- Win rate {wr}% across {total} resolved trade(s) — strategy performing well."
                 )
-            return "\n".join(parts)
+            elif wr >= 45:
+                observations.append(
+                    f"- Win rate {wr}% across {total} resolved trade(s) — moderate. Watching loss patterns."
+                )
+            else:
+                observations.append(
+                    f"- Win rate {wr}% across {total} resolved trade(s) — below target. "
+                    f"Tightening entry criteria."
+                )
 
-        # Win rate observation
-        wr = stats["win_rate"]
-        if wr >= 60:
-            observations.append(
-                f"- Overall win rate of {wr}% is strong. Current strategy mix is working."
-            )
-        elif wr >= 45:
-            observations.append(
-                f"- Win rate of {wr}% is moderate. Watching for patterns in losses."
-            )
-        else:
-            observations.append(
-                f"- Win rate of {wr}% is below target. Need to tighten entry criteria."
-            )
-
-        # Copy trade observations
+        # Copy trade wallet P&L (resolved)
         if stats["copy_stats"]:
             best = stats["copy_stats"][0]
             if best["pnl"] > 0:
                 observations.append(
-                    f"- Best copied wallet (`{best['source_wallet'][:12]}...`) "
-                    f"generating ${best['pnl']:.2f} P&L across {best['trades']} trades."
+                    f"- Best resolved wallet (`{best['source_wallet'][:12]}...`) "
+                    f"generating ${best['pnl']:.2f} P&L across {best['trades']} trade(s)."
                 )
-
             losers = [c for c in stats["copy_stats"] if c["pnl"] < 0]
             if losers:
                 observations.append(
-                    f"- {len(losers)} copied wallet(s) are net negative. "
-                    f"Consider dropping lowest performers on next leaderboard refresh."
+                    f"- {len(losers)} wallet(s) net negative on resolved trades. "
+                    f"Will drop lowest performers on next leaderboard refresh."
                 )
 
         # Spike observations
@@ -242,35 +304,31 @@ class StrategyDocLogger:
             faded = [s for s in spikes if s["trade_decision"] == "fade"]
             skipped = [s for s in spikes if s["trade_decision"] == "skip"]
             observations.append(
-                f"- Recent spike breakdown: {len(entered)} entered, "
+                f"- Volume spike breakdown: {len(entered)} entered, "
                 f"{len(faded)} faded, {len(skipped)} skipped."
             )
-
             wall_spikes = [s for s in spikes if s.get("price_wall")]
             if wall_spikes:
-                correct = sum(
-                    1 for s in wall_spikes if s.get("outcome_correct")
+                correct = sum(1 for s in wall_spikes if s.get("outcome_correct"))
+                resolved_wall = sum(
+                    1 for s in wall_spikes if s.get("outcome_correct") is not None
                 )
-                total_resolved = sum(
-                    1 for s in wall_spikes
-                    if s.get("outcome_correct") is not None
-                )
-                if total_resolved > 0:
-                    wall_acc = correct / total_resolved * 100
+                if resolved_wall > 0:
                     observations.append(
-                        f"- Price wall accuracy: {wall_acc:.0f}% "
-                        f"({correct}/{total_resolved} correct predictions)."
+                        f"- Price wall accuracy: {correct/resolved_wall*100:.0f}% "
+                        f"({correct}/{resolved_wall} correct)."
                     )
 
-        if not observations:
+        if not observations and not user_obs:
             observations.append(
-                "- Collecting more data to identify patterns. "
-                "Will update observations as trades resolve."
+                "- Agent is running. Observations will populate as positions open and resolve."
             )
 
-        if parts:
-            parts.append("### Agent Analysis\n")
-        parts.extend(observations)
+        if observations:
+            if parts:
+                parts.append("### Agent Analysis\n")
+            parts.extend(observations)
+
         return "\n".join(parts)
 
     # ── GitHub API ──────────────────────────────────────────────────────────
