@@ -120,6 +120,28 @@
   .stat-value.yellow { color: var(--yellow); }
   .stat-sub { font-size: 10px; color: var(--dim); margin-top: 4px; }
 
+  /* ── Open Positions panel ────────────────────────────────────────── */
+  .market-question {
+    max-width: 420px;
+    white-space: normal;
+    line-height: 1.4;
+    color: var(--text);
+  }
+  .no-positions {
+    padding: 28px;
+    text-align: center;
+    color: var(--dim);
+    font-size: 12px;
+  }
+  .pos-count-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 20px; height: 20px; padding: 0 6px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px; font-weight: 700;
+  }
+
   /* ── Two-column row ──────────────────────────────────────────────── */
   .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
   .row-3-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
@@ -368,6 +390,34 @@
     </div>
   </div>
 
+  <!-- ── Open Positions ───────────────────────────────────────────────── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Open Positions</span>
+      <span id="open-pos-badge"></span>
+    </div>
+    <div class="table-wrap">
+      <table id="open-pos-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Market</th>
+            <th>Outcome</th>
+            <th>Strategy</th>
+            <th>Entry Price</th>
+            <th>Tokens</th>
+            <th>Cost Basis</th>
+            <th>Source Wallet</th>
+            <th>Opened</th>
+          </tr>
+        </thead>
+        <tbody id="open-pos-tbody">
+          <tr><td colspan="9" class="no-positions">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- ── Copy Trade + Volume Spike ────────────────────────────────────── -->
   <div class="row-2">
 
@@ -591,6 +641,53 @@ function renderOverview(d) {
     'Updated ' + new Date().toLocaleTimeString();
 }
 
+// ── Render Open Positions ─────────────────────────────────────────────────
+function renderOpenPositions(d) {
+  if (!d) return;
+  const tbody = document.getElementById('open-pos-tbody');
+  const badge = document.getElementById('open-pos-badge');
+  const positions = d.positions || [];
+
+  if (!positions.length) {
+    badge.innerHTML = '';
+    tbody.innerHTML = '<tr><td colspan="9" class="no-positions">No open positions</td></tr>';
+    return;
+  }
+
+  badge.innerHTML = `<span class="pos-count-badge">${positions.length}</span>`;
+
+  tbody.innerHTML = positions.map((p, i) => {
+    const stratTag = p.strategy === 'copy_trade'
+      ? '<span class="tag tag-blue">copy</span>'
+      : '<span class="tag tag-purple">spike</span>';
+    const outcomeTag = p.outcome === 'YES'
+      ? '<span class="tag tag-green">YES</span>'
+      : '<span class="tag tag-red">NO</span>';
+    const polyUrl = p.market_slug
+      ? `https://polymarket.com/event/${p.market_slug}`
+      : null;
+    const marketCell = polyUrl
+      ? `<a href="${polyUrl}" target="_blank" rel="noopener"
+           style="color:var(--text);text-decoration:none;"
+           onmouseover="this.style.color='var(--accent)'"
+           onmouseout="this.style.color='var(--text)'"
+         >${escHtml(p.market_question || '—')}</a>`
+      : escHtml(p.market_question || '—');
+
+    return `<tr>
+      <td style="color:var(--dim)">${i + 1}</td>
+      <td class="market-question">${marketCell}</td>
+      <td>${outcomeTag}</td>
+      <td>${stratTag}</td>
+      <td style="font-variant-numeric:tabular-nums">${p.entry_price?.toFixed(3) ?? '—'}</td>
+      <td style="font-variant-numeric:tabular-nums">${p.size?.toFixed(2) ?? '—'}</td>
+      <td style="font-variant-numeric:tabular-nums;color:var(--yellow)">${fmt$(p.cost_basis)}</td>
+      <td style="color:var(--cyan);font-size:10px">${shortAddr(p.source_wallet)}</td>
+      <td style="color:var(--dim)">${fmtDate(p.opened_at)}</td>
+    </tr>`;
+  }).join('');
+}
+
 // ── Render Copy Trades ─────────────────────────────────────────────────────
 function renderCopyTrades(d) {
   if (!d) return;
@@ -807,8 +904,9 @@ async function submitObservation() {
 
 // ── Refresh all panels ─────────────────────────────────────────────────────
 async function refreshAll() {
-  const [overview, copyTrades, spikes, logs, doc, obs] = await Promise.all([
+  const [overview, positions, copyTrades, spikes, logs, doc, obs] = await Promise.all([
     fetchJSON('/api/overview'),
+    fetchJSON('/api/positions'),
     fetchJSON('/api/copy_trades'),
     fetchJSON('/api/volume_spikes'),
     fetchJSON('/api/logs'),
@@ -816,6 +914,7 @@ async function refreshAll() {
     fetchJSON('/api/observations'),
   ]);
   renderOverview(overview);
+  renderOpenPositions(positions);
   renderCopyTrades(copyTrades);
   renderSpikes(spikes);
   renderLog(logs);

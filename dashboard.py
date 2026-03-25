@@ -151,6 +151,23 @@ def copy_trades():
         db.close()
 
 
+@app.route("/api/positions")
+def open_positions():
+    db = _db()
+    try:
+        positions = _rows(db,
+            """SELECT id, market_question, market_slug, outcome, side,
+                      entry_price, size, cost_basis, strategy,
+                      source_wallet, opened_at, status
+               FROM positions
+               WHERE status = 'open'
+               ORDER BY opened_at DESC"""
+        )
+        return jsonify({"positions": positions})
+    finally:
+        db.close()
+
+
 @app.route("/api/volume_spikes")
 def volume_spikes():
     db = _db()
