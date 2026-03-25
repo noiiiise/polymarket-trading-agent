@@ -51,7 +51,7 @@ def setup_logging() -> None:
 logger = logging.getLogger("main")
 
 
-async def run_agent() -> None:
+async def run_agent(thread_stop: threading.Event) -> None:
     """Initialize all components and run the agent."""
     logger.info("=" * 60)
     logger.info("Polymarket Trading Agent starting...")
@@ -98,15 +98,14 @@ async def run_agent() -> None:
     doc_logger = StrategyDocLogger(db)
     await doc_logger.start()
 
-    # Shutdown event
+    # Shutdown event — polled from thread_stop so signals stay in main thread
     shutdown_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
 
-    def handle_shutdown(sig: int, frame: object) -> None:
-        logger.info("Received signal %s, initiating shutdown...", sig)
-        shutdown_event.set()
-
-    signal.signal(signal.SIGINT, handle_shutdown)
-    signal.signal(signal.SIGTERM, handle_shutdown)
+    async def _poll_thread_stop() -> None:
+        while not thread_stop.is_set():
+            await asyncio.sleep(0.5)
+        loop.call_soon_threadsafe(shutdown_event.set)
 
     # Create tasks
     tasks = [
@@ -117,6 +116,7 @@ async def run_agent() -> None:
             _daily_summary_loop(doc_logger, shutdown_event),
             name="daily_summary",
         ),
+        asyncio.create_task(_poll_thread_stop(), name="stop_poller"),
     ]
 
     logger.info("All systems running. Monitoring %d strategy modules.", 2)
@@ -173,10 +173,10 @@ async def _daily_summary_loop(
             continue
 
 
-def _run_agent_thread() -> None:
+def _run_agent_thread(thread_stop: threading.Event) -> None:
     """Run the async trading agent in a background thread."""
     try:
-        asyncio.run(run_agent())
+        asyncio.run(run_agent(thread_stop))
     except Exception as e:
         logger.critical("Trading agent crashed: %s", e, exc_info=True)
 
@@ -186,12 +186,25 @@ def main() -> None:
     Entry point.
     Flask runs in the main thread (required for Railway web services).
     The async trading agent runs in a background thread.
+    Signal handlers registered here (main thread only) set thread_stop,
+    which the agent polls via asyncio to trigger graceful shutdown.
     """
     setup_logging()
     logger.info("Python %s on %s", sys.version, sys.platform)
 
+    thread_stop = threading.Event()
+
+    def handle_shutdown(sig: int, frame: object) -> None:
+        logger.info("Received signal %s, initiating shutdown...", sig)
+        thread_stop.set()
+
+    signal.signal(signal.SIGINT, handle_shutdown)
+    signal.signal(signal.SIGTERM, handle_shutdown)
+
     # Start trading agent in background thread
-    agent_thread = threading.Thread(target=_run_agent_thread, name="agent", daemon=True)
+    agent_thread = threading.Thread(
+        target=_run_agent_thread, args=(thread_stop,), name="agent", daemon=True
+    )
     agent_thread.start()
     logger.info("Trading agent started in background thread")
 
