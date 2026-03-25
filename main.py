@@ -16,6 +16,7 @@ import config
 import database
 from execution import OrderExecutor
 from logger import StrategyDocLogger
+from redemption import RedemptionManager
 from strategies.copy_trade import CopyTradeStrategy
 from strategies.volume_spike import VolumeSpikeStrategy
 from wallet import WalletManager
@@ -98,6 +99,9 @@ async def run_agent(thread_stop: threading.Event) -> None:
     doc_logger = StrategyDocLogger(db)
     await doc_logger.start()
 
+    redemption_mgr = RedemptionManager(db)
+    await redemption_mgr.start()
+
     # Shutdown event — polled from thread_stop so signals stay in main thread
     shutdown_event = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -112,6 +116,7 @@ async def run_agent(thread_stop: threading.Event) -> None:
         asyncio.create_task(wallet_mgr.refresh_loop(), name="wallet_refresh"),
         asyncio.create_task(copy_strategy.run(), name="copy_trade"),
         asyncio.create_task(spike_strategy.run(), name="volume_spike"),
+        asyncio.create_task(redemption_mgr.run(), name="redemption"),
         asyncio.create_task(
             _daily_summary_loop(doc_logger, shutdown_event),
             name="daily_summary",
@@ -144,6 +149,7 @@ async def run_agent(thread_stop: threading.Event) -> None:
     # Cleanup
     await copy_strategy.stop()
     await spike_strategy.stop()
+    await redemption_mgr.stop()
     await executor.stop()
     await wallet_mgr.stop()
     await doc_logger.stop()

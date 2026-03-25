@@ -5,4 +5,5 @@ python-dotenv>=1.0.0
 flask>=3.0.0
 gunicorn>=22.0.0
 py-clob-client>=0.17.0
+web3>=6.0.0
 # build-20260318202500
