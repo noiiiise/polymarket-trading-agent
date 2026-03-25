@@ -54,6 +54,9 @@ class CopyTradeStrategy:
         # address -> {token_id: position_info}  (keyed by token so YES and NO are separate)
         self._known_positions: dict[str, dict[str, dict[str, Any]]] = {}
         self._last_leaderboard_refresh: datetime | None = None
+        # Markets entered in the current polling cycle — prevents duplicate copies
+        # when multiple tracked wallets hold the same market simultaneously.
+        self._markets_entered_this_cycle: set[str] = set()
 
     async def start(self) -> None:
         self._running = True
@@ -70,6 +73,10 @@ class CopyTradeStrategy:
             try:
                 if self._should_refresh_leaderboard():
                     await self._refresh_leaderboard()
+
+                # Reset per-cycle dedup set so we never copy the same market twice
+                # in a single polling round, even if multiple tracked wallets hold it.
+                self._markets_entered_this_cycle: set[str] = set()
 
                 for address, info in self._tracked_wallets.items():
                     try:
@@ -309,9 +316,13 @@ class CopyTradeStrategy:
                 token_id = _get_token_id(market, position["outcome"])
                 position["token_id"] = token_id
 
-        # 2. Already have a position in this market?
+        # 2. Already have a position in this market? Check both the DB-backed wallet
+        #    state AND the in-cycle set (catches cases where wallet hasn't refreshed yet).
         if self._wallet.get_position_for_market(market_id):
             logger.info("Skip copy: already have position in %s", market_id[:16])
+            return
+        if market_id in self._markets_entered_this_cycle:
+            logger.info("Skip copy: already copied %s this cycle", market_id[:16])
             return
 
         # 3. Spread check
@@ -385,6 +396,9 @@ class CopyTradeStrategy:
             await self._db.commit()
             logger.warning("Copy trade order failed for %s: %s", market_id[:16], result.get("error"))
         else:
+            # Immediately mark this market as entered so subsequent wallets in this
+            # cycle don't copy it again before the wallet manager refreshes.
+            self._markets_entered_this_cycle.add(market_id)
             await self._wallet.refresh()
 
 
