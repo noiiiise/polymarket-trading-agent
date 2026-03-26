@@ -134,24 +134,45 @@ class VolumeSpikeStrategy:
         )
         bucket_end = bucket_start + timedelta(hours=config.VOLUME_SPIKE_BUCKET_HOURS)
 
+        # Track which markets were fully written so we only clear those from the
+        # accumulator. Markets that fail to write are retained for the next cycle.
+        successfully_flushed: list[str] = []
+
         for market_id, volumes in self._volume_accumulator.items():
+            market_ok = True
             for outcome in ["YES", "NO"]:
                 vol = volumes.get(outcome, 0)
                 count = self._trade_count_accumulator.get(market_id, {}).get(outcome, 0)
                 if vol > 0:
-                    await database.insert_volume_bucket(
-                        self._db,
-                        market_id=market_id,
-                        outcome=outcome,
-                        bucket_start=bucket_start.isoformat(),
-                        bucket_end=bucket_end.isoformat(),
-                        volume=vol,
-                        trade_count=count,
-                    )
+                    try:
+                        await database.insert_volume_bucket(
+                            self._db,
+                            market_id=market_id,
+                            outcome=outcome,
+                            bucket_start=bucket_start.isoformat(),
+                            bucket_end=bucket_end.isoformat(),
+                            volume=vol,
+                            trade_count=count,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to flush volume for %s %s: %s",
+                            market_id[:12], outcome, e,
+                        )
+                        market_ok = False
+            if market_ok:
+                successfully_flushed.append(market_id)
 
-        # Reset accumulators
-        self._volume_accumulator = {}
-        self._trade_count_accumulator = {}
+        failed = len(self._volume_accumulator) - len(successfully_flushed)
+        if failed:
+            logger.warning(
+                "Volume flush: %d/%d markets written; %d retained for retry",
+                len(successfully_flushed), len(self._volume_accumulator) + len(successfully_flushed), failed,
+            )
+
+        for market_id in successfully_flushed:
+            self._volume_accumulator.pop(market_id, None)
+            self._trade_count_accumulator.pop(market_id, None)
 
     # ── Spike Detection ─────────────────────────────────────────────────────
 

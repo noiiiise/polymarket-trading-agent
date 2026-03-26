@@ -18,6 +18,9 @@ async def get_db() -> aiosqlite.Connection:
     db = await aiosqlite.connect(config.SQLITE_DB_PATH)
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode=WAL")
+    await db.execute("PRAGMA synchronous=NORMAL")   # safe with WAL, faster than FULL
+    await db.execute("PRAGMA busy_timeout=5000")    # wait up to 5s on lock contention
+    await db.execute("PRAGMA wal_autocheckpoint=100")  # checkpoint WAL after 100 pages
     await db.execute("PRAGMA foreign_keys=ON")
     return db
 
