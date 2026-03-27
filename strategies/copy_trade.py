@@ -334,14 +334,14 @@ class CopyTradeStrategy:
             )
             return
 
-        # 4. Position size: mirror the tracked wallet's allocation percentage
-        wallet_value = position.get("current_value", 1)
-        if wallet_value > 0:
-            position_pct = position["size"] * position["avg_price"] / wallet_value
-        else:
-            position_pct = 0.02
-
-        size_usd = self._wallet.calculate_position_size(position_pct, "copy_trade")
+        # 4. Position size.
+        # The Polymarket positions API returns current_value for each individual
+        # position, not the wallet's total portfolio value — so we cannot reliably
+        # compute a proportional allocation. Use a fixed per-trade cap instead;
+        # the risk checks below still enforce exposure limits.
+        size_usd = self._wallet.calculate_position_size(
+            config.COPY_TRADE_MAX_POSITION_PCT, "copy_trade"
+        )
         price = self._executor.calculate_limit_price(order_book, "BUY")
 
         if price <= 0 or price >= 1:
@@ -351,13 +351,21 @@ class CopyTradeStrategy:
         size_tokens = size_usd / price
         cost = price * size_tokens
 
-        # 5. Risk check
+        # 5. Minimum size guard — CLOB rejects orders below 1 share.
+        if size_tokens < 1.0:
+            logger.info(
+                "Skip copy: position size %.4f tokens ($%.2f) below CLOB minimum of 1 share",
+                size_tokens, size_usd,
+            )
+            return
+
+        # 6. Risk check
         allowed, reason = self._wallet.can_open_position(cost, "copy_trade")
         if not allowed:
             logger.info("Skip copy: risk check failed — %s", reason)
             return
 
-        # 6. Execute
+        # 7. Execute
         outcome = position.get("outcome", "YES")
         logger.info(
             "Executing copy trade: BUY %s %.2f tokens @ $%.4f ($%.2f) from %s (rank #%d)",
