@@ -284,13 +284,23 @@ class CopyTradeStrategy:
         market_id = position["market_id"]
         token_id = position["token_id"]
 
+        logger.info(
+            "Evaluating copy: market=%s token=%s outcome=%s question=%s",
+            market_id[:16], token_id[:16], position.get("outcome"),
+            (position.get("market_question") or "")[:40],
+        )
+
         # 1. Fetch market info for slug, question, and resolution time check.
         # NOTE: Polymarket neg-risk markets return wrong/empty token data from the
         # Gamma API. Only apply Gamma enrichment when tokens are present; otherwise
         # fall back to the outcome and token_id from the positions API, which are
         # always correct.
         market = await self._executor.get_market_info(market_id)
-        if market and market.get("tokens"):
+        has_tokens = bool(market and market.get("tokens"))
+        logger.info("Gamma lookup: has_tokens=%s, question=%s", has_tokens,
+                     (market.get("question", "") if market else "no market")[:40])
+
+        if has_tokens:
             outcome = _get_outcome_for_token(market, token_id)
             position["outcome"] = outcome
             position["market_question"] = market.get("question", position.get("market_question", ""))
@@ -325,6 +335,10 @@ class CopyTradeStrategy:
 
         # 3. Spread check
         order_book = await self._executor.get_order_book(token_id)
+        logger.info(
+            "Order book: bid=%.4f ask=%.4f spread=%.4f",
+            order_book["best_bid"], order_book["best_ask"], order_book["spread"],
+        )
         if order_book["spread"] > config.COPY_TRADE_MAX_SPREAD_PCT:
             logger.info(
                 "Skip copy: spread %.2f%% > max %.2f%%",
@@ -333,10 +347,6 @@ class CopyTradeStrategy:
             return
 
         # 4. Position size.
-        # The Polymarket positions API returns current_value for each individual
-        # position, not the wallet's total portfolio value — so we cannot reliably
-        # compute a proportional allocation. Use a fixed per-trade cap instead;
-        # the risk checks below still enforce exposure limits.
         size_usd = self._wallet.calculate_position_size(
             config.COPY_TRADE_MAX_POSITION_PCT, "copy_trade"
         )
@@ -351,6 +361,11 @@ class CopyTradeStrategy:
 
         size_tokens = size_usd / price
         cost = price * size_tokens
+
+        logger.info(
+            "Sizing: size_usd=%.2f price=%.4f size_tokens=%.4f cost=%.4f",
+            size_usd, price, size_tokens, cost,
+        )
 
         # 5. Minimum size guard — CLOB rejects orders below 1 share.
         if size_tokens < 1.0:
