@@ -234,7 +234,7 @@ class CopyTradeStrategy:
                                 "market_id": p.get("conditionId", ""),
                                 "market_slug": "",
                                 "market_question": p.get("title", ""),
-                                "outcome": "YES",   # resolved later from market lookup
+                                "outcome": p.get("outcome", "YES").upper(),  # use API value directly
                                 "side": "BUY",
                                 "size": float(p.get("size", 0)),
                                 "avg_price": float(p.get("avgPrice", p.get("averagePrice", 0))),
@@ -284,10 +284,13 @@ class CopyTradeStrategy:
         market_id = position["market_id"]
         token_id = position["token_id"]
 
-        # 1. Fetch market info — check resolution time and resolve YES/NO outcome
+        # 1. Fetch market info for slug, question, and resolution time check.
+        # NOTE: Polymarket neg-risk markets return wrong/empty token data from the
+        # Gamma API. Only apply Gamma enrichment when tokens are present; otherwise
+        # fall back to the outcome and token_id from the positions API, which are
+        # always correct.
         market = await self._executor.get_market_info(market_id)
-        if market:
-            # Resolve the actual outcome (YES or NO) from the token_id
+        if market and market.get("tokens"):
             outcome = _get_outcome_for_token(market, token_id)
             position["outcome"] = outcome
             position["market_question"] = market.get("question", position.get("market_question", ""))
@@ -307,7 +310,6 @@ class CopyTradeStrategy:
                 except (ValueError, TypeError):
                     pass
 
-            # If token_id not found in market tokens, fall back to market's first token
             if not token_id:
                 token_id = _get_token_id(market, position["outcome"])
                 position["token_id"] = token_id
