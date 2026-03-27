@@ -187,18 +187,9 @@ class CopyTradeStrategy:
     ) -> None:
         current_positions = await self._fetch_wallet_positions(address)
 
-        if address not in self._known_positions:
-            # First scan: record existing positions, do NOT copy (they're stale).
-            self._known_positions[address] = {
-                p["token_id"]: p for p in current_positions
-            }
-            logger.debug(
-                "Initial scan %s (%s): %d positions recorded",
-                address[:12], info.get("userName", "anon"), len(current_positions),
-            )
-            return
-
-        known = self._known_positions[address]
+        # known is empty on the very first scan — all positions are treated as
+        # actionable so existing holdings are copied immediately on startup.
+        known = self._known_positions.get(address, {})
 
         for pos in current_positions:
             token_id = pos["token_id"]
@@ -206,7 +197,7 @@ class CopyTradeStrategy:
                 continue
 
             logger.info(
-                "New position from %s (rank #%d): %s %s in %s",
+                "Position to copy from %s (rank #%d): %s %s in %s",
                 info.get("userName", address[:12]), info["rank"],
                 pos.get("outcome", "?"), pos.get("market_id", "?")[:16],
                 pos.get("market_question", "")[:40] or pos.get("market_id", "")[:16],
