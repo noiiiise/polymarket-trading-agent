@@ -103,13 +103,18 @@ class CopyTradeStrategy:
     async def _refresh_leaderboard(self) -> None:
         logger.info("Refreshing leaderboard...")
 
-        if config.PAPER_TRADING:
+        if config.COPY_TRADE_PINNED_WALLETS:
+            wallets = [
+                {"address": addr, "userName": addr[:10], "pnl": 0, "vol": 0}
+                for addr in config.COPY_TRADE_PINNED_WALLETS
+            ]
+        elif config.PAPER_TRADING:
             wallets = self._simulated_leaderboard()
         else:
             wallets = await self._fetch_leaderboard()
+            wallets = [w for w in wallets if w.get("pnl", 0) > 10_000]
 
-        qualified = [w for w in wallets if w.get("pnl", 0) > 10_000]
-        top = qualified[:config.COPY_TRADE_TOP_WALLETS_COUNT]
+        top = wallets[:config.COPY_TRADE_TOP_WALLETS_COUNT]
 
         self._tracked_wallets = {}
         for i, w in enumerate(top):
