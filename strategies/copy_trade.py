@@ -342,9 +342,12 @@ class CopyTradeStrategy:
         )
         price = self._executor.calculate_limit_price(order_book, "BUY")
 
-        if price <= 0 or price >= 1:
+        if price <= 0:
             logger.warning("Skip copy: invalid price %.4f for %s", price, market_id[:16])
             return
+
+        # CLOB accepts prices in (0, 1) exclusive at 0.01 tick size → max is 0.99
+        price = min(price, 0.99)
 
         size_tokens = size_usd / price
         cost = price * size_tokens
