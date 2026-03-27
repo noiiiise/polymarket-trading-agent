@@ -303,8 +303,8 @@ class OrderExecutor:
 
         if price_rounded <= 0 or price_rounded >= 1:
             raise ValueError(f"Price {price_rounded} out of valid range (0, 1)")
-        if size_rounded < 1:
-            raise ValueError(f"Size {size_rounded} below CLOB minimum of 1 share")
+        if size_rounded < 5:
+            raise ValueError(f"Size {size_rounded} below CLOB minimum of 5 shares")
 
         side_val = BUY if side == "BUY" else SELL
         logger.info(

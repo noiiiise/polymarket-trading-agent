@@ -367,10 +367,10 @@ class CopyTradeStrategy:
             size_usd, price, size_tokens, cost,
         )
 
-        # 5. Minimum size guard — CLOB rejects orders below 1 share.
-        if size_tokens < 1.0:
+        # 5. Minimum size guard — CLOB minimum varies by market (typically 5 shares).
+        if size_tokens < 5.0:
             logger.info(
-                "Skip copy: position size %.4f tokens ($%.2f) below CLOB minimum of 1 share",
+                "Skip copy: position size %.4f tokens ($%.2f) below CLOB minimum of 5 shares",
                 size_tokens, size_usd,
             )
             return

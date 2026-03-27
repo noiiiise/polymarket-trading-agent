@@ -53,7 +53,7 @@ BALANCE_OF_SELECTOR: str = "0x70a08231"  # ERC-20 balanceOf(address)
 COPY_TRADE_PINNED_WALLETS: list[str] = [
     "0x7f3c8979d0afa00007bae4747d5347122af05613",
 ]
-COPY_TRADE_MAX_POSITION_PCT: float = 0.05          # 5% of wallet per copy trade (HARD CAP)
+COPY_TRADE_MAX_POSITION_PCT: float = 0.08          # 8% of wallet per copy trade (HARD CAP)
 COPY_TRADE_POLL_INTERVAL_SEC: int = 60              # Poll top wallets every 60s
 COPY_TRADE_TOP_WALLETS_COUNT: int = 10              # Track top 10 most profitable wallets
 COPY_TRADE_MIN_WALLET_TRADES: int = 10              # Skip wallets with <10 trades in 30d
