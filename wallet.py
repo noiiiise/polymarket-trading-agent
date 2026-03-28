@@ -64,24 +64,17 @@ class WalletManager:
     async def refresh(self) -> None:
         """Refresh balance and positions from chain/db."""
         if not config.PAPER_TRADING:
-            # Primary: on-chain USDC.e balance via RPC
-            balance = await self._fetch_balance_onchain()
-            if balance > 0.0:
-                self.balance = balance
+            # Balance = cash (USDC.e on-chain) + portfolio value (positions inside Polymarket).
+            # Most funds are typically inside Polymarket contracts, not as raw USDC.e.
+            cash = await self._fetch_balance_onchain()
+            portfolio = await self._fetch_portfolio_value()
+            total = cash + portfolio
+
+            if total > 0.0:
+                self.balance = total
+                logger.info("Wallet balance: $%.2f (cash=$%.2f + positions=$%.2f)", total, cash, portfolio)
             else:
-                # Fallback 1: Gamma API (unreliable — often returns 404)
-                logger.warning("On-chain RPC returned 0, trying Gamma API fallback...")
-                balance = await self._fetch_balance_gamma()
-                if balance > 0.0:
-                    self.balance = balance
-                else:
-                    # Fallback 2: data-api (requires lowercase address)
-                    logger.warning("Gamma API failed, trying data-api fallback...")
-                    balance = await self._fetch_balance_data_api()
-                    if balance > 0.0:
-                        self.balance = balance
-                    else:
-                        logger.error("All balance fetch methods failed, keeping last known: $%.2f", self.balance)
+                logger.error("All balance fetch methods returned 0, keeping last known: $%.2f", self.balance)
         else:
             # In paper mode, balance = initial - open exposure + realized P&L
             await self._recalculate_paper_balance()
@@ -169,6 +162,31 @@ class WalletManager:
                 logger.debug("RPC %s failed: %s", rpc_url, e)
 
         logger.warning("All %d RPC endpoints failed for balance fetch", attempts)
+        return 0.0
+
+    async def _fetch_portfolio_value(self) -> float:
+        """
+        Fetch total value of open positions inside Polymarket via the positions API.
+        This captures funds deployed into markets (not visible as raw USDC.e).
+        """
+        if not self._wallet_address:
+            return 0.0
+
+        addr = self._wallet_address.lower()
+        url = f"https://data-api.polymarket.com/positions"
+        params = {"user": addr, "sizeThreshold": "0.001", "limit": "200"}
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url, params=params, timeout=aiohttp.ClientTimeout(total=10)
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        total = sum(float(p.get("currentValue", 0)) for p in data)
+                        logger.debug("Portfolio value from positions API: $%.2f (%d positions)", total, len(data))
+                        return total
+        except Exception as e:
+            logger.debug("Portfolio value fetch failed: %s", e)
         return 0.0
 
     async def _fetch_balance_gamma(self) -> float:
