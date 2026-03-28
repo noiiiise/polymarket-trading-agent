@@ -28,6 +28,7 @@ class WalletManager:
 
     def __init__(self) -> None:
         self.balance: float = 0.0
+        self.cash_balance: float = 0.0
         self.positions: list[dict[str, Any]] = []
         self.total_exposure: float = 0.0
         self.last_refresh: datetime | None = None
@@ -44,6 +45,7 @@ class WalletManager:
         # Paper trading state
         if config.PAPER_TRADING:
             self.balance = config.PAPER_TRADING_INITIAL_BALANCE
+            self.cash_balance = config.PAPER_TRADING_INITIAL_BALANCE
             logger.info("Paper trading mode: starting balance $%.2f", self.balance)
 
     async def start(self, db: aiosqlite.Connection) -> None:
@@ -64,14 +66,13 @@ class WalletManager:
     async def refresh(self) -> None:
         """Refresh balance and positions from chain/db."""
         if not config.PAPER_TRADING:
-            # Balance = cash (USDC.e on-chain) + portfolio value (positions inside Polymarket).
-            # Most funds are typically inside Polymarket contracts, not as raw USDC.e.
             cash = await self._fetch_balance_onchain()
             portfolio = await self._fetch_portfolio_value()
             total = cash + portfolio
 
             if total > 0.0:
                 self.balance = total
+                self.cash_balance = cash
                 logger.info("Wallet balance: $%.2f (cash=$%.2f + positions=$%.2f)", total, cash, portfolio)
             else:
                 logger.error("All balance fetch methods returned 0, keeping last known: $%.2f", self.balance)
@@ -112,6 +113,7 @@ class WalletManager:
         realized_pnl = float(rows[0]["realized"])
 
         self.balance = base - open_exposure + realized_pnl
+        self.cash_balance = self.balance
 
     async def _fetch_balance_onchain(self) -> float:
         """
@@ -246,8 +248,10 @@ class WalletManager:
     # ── Risk checks ─────────────────────────────────────────────────────────
 
     def available_balance(self) -> float:
-        """Cash available for new trades (balance minus open exposure)."""
-        return max(0.0, self.balance - self.total_exposure)
+        """Cash available for new trades — the actual USDC.e on-chain, capped by
+        (total_balance - open_exposure) so we never exceed risk limits either."""
+        risk_room = self.balance - self.total_exposure
+        return max(0.0, min(self.cash_balance, risk_room))
 
     def can_open_position(self, cost: float, strategy: str) -> tuple[bool, str]:
         """
@@ -292,17 +296,24 @@ class WalletManager:
     ) -> float:
         """
         Calculate position size in USDC.
-        wallet_pct: the desired percentage of wallet (e.g., from copied wallet's allocation).
-        Caps at strategy-specific maximum.
+        Uses the total balance for percentage calculation but caps the result
+        at actual available cash so the CLOB order won't be rejected.
         """
         if strategy == "copy_trade":
             capped_pct = min(wallet_pct, config.COPY_TRADE_MAX_POSITION_PCT)
         elif strategy == "volume_spike":
             capped_pct = min(wallet_pct, config.VOLUME_SPIKE_MAX_POSITION_PCT)
         else:
-            capped_pct = min(wallet_pct, 0.05)  # Conservative fallback
+            capped_pct = min(wallet_pct, 0.05)
 
-        return self.balance * capped_pct
+        desired = self.balance * capped_pct
+        cash_available = self.available_balance()
+        if desired > cash_available and cash_available > 0:
+            logger.info(
+                "Position size capped to available cash: $%.2f → $%.2f",
+                desired, cash_available,
+            )
+        return min(desired, cash_available) if cash_available > 0 else desired
 
     def get_position_for_market(self, market_id: str) -> dict[str, Any] | None:
         """Check if we already have an open position in a market."""
