@@ -248,10 +248,12 @@ class WalletManager:
     # ── Risk checks ─────────────────────────────────────────────────────────
 
     def available_balance(self) -> float:
-        """Cash available for new trades — the actual USDC.e on-chain, capped by
-        (total_balance - open_exposure) so we never exceed risk limits either."""
-        risk_room = self.balance - self.total_exposure
-        return max(0.0, min(self.cash_balance, risk_room))
+        """Cash available for new trades. In live mode this is simply the
+        on-chain USDC.e — the exposure cap is enforced separately in
+        can_open_position(). In paper mode, use balance minus exposure."""
+        if config.PAPER_TRADING:
+            return max(0.0, self.balance - self.total_exposure)
+        return self.cash_balance
 
     def can_open_position(self, cost: float, strategy: str) -> tuple[bool, str]:
         """

@@ -214,7 +214,9 @@ def logs():
         try:
             with open(log_file, "r", encoding="utf-8") as f:
                 all_lines = f.readlines()
-            lines = [l.rstrip() for l in all_lines[-50:]]
+            limit = request.args.get("limit", 100, type=int)
+            limit = min(limit, 500)
+            lines = [l.rstrip() for l in all_lines[-limit:]]
         except OSError:
             lines = ["[error reading log file]"]
     else:
