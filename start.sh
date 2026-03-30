@@ -4,9 +4,19 @@ set -e
 PORT="${PORT:-8080}"
 
 echo "Starting Polymarket Trading Agent..."
-python agent.py &
+
+restart_agent() {
+    while true; do
+        python agent.py
+        EXIT_CODE=$?
+        echo "Agent exited with code $EXIT_CODE — restarting in 10s..."
+        sleep 10
+    done
+}
+
+restart_agent &
 AGENT_PID=$!
-echo "Agent started (PID $AGENT_PID)"
+echo "Agent supervisor started (PID $AGENT_PID)"
 
 echo "Starting dashboard on port $PORT..."
 exec gunicorn \

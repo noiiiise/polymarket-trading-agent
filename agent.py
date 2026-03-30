@@ -40,6 +40,11 @@ def setup_logging() -> None:
     file_handler.setFormatter(formatter)
     root.addHandler(file_handler)
 
+    # Silence noisy third-party HTTP loggers — they dump full headers
+    # (including API keys) which triggers Cloudflare WAF on the logs endpoint.
+    for name in ("httpcore", "httpx", "hpack", "h2", "h11", "urllib3"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
 
 logger = logging.getLogger("agent")
 
@@ -91,24 +96,44 @@ async def run_agent() -> None:
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
 
-    tasks = [
-        asyncio.create_task(wallet_mgr.refresh_loop(), name="wallet_refresh"),
-        asyncio.create_task(copy_strategy.run(), name="copy_trade"),
-        asyncio.create_task(spike_strategy.run(), name="volume_spike"),
-        asyncio.create_task(_daily_summary_loop(doc_logger, shutdown_event), name="daily_summary"),
-    ]
+    task_factories = {
+        "wallet_refresh": lambda: wallet_mgr.refresh_loop(),
+        "copy_trade": lambda: copy_strategy.run(),
+        "volume_spike": lambda: spike_strategy.run(),
+        "daily_summary": lambda: _daily_summary_loop(doc_logger, shutdown_event),
+    }
+    tasks = {
+        name: asyncio.create_task(factory(), name=name)
+        for name, factory in task_factories.items()
+    }
 
     logger.info("All systems running. Monitoring 2 strategy modules.")
 
-    try:
-        await shutdown_event.wait()
-    except asyncio.CancelledError:
-        pass
+    while not shutdown_event.is_set():
+        try:
+            await asyncio.wait_for(shutdown_event.wait(), timeout=30)
+            break
+        except asyncio.TimeoutError:
+            pass
+        except asyncio.CancelledError:
+            break
+
+        for name, task in list(tasks.items()):
+            if task.done():
+                exc = task.exception() if not task.cancelled() else None
+                logger.error(
+                    "Task '%s' died unexpectedly%s — restarting",
+                    name,
+                    f": {exc}" if exc else "",
+                )
+                tasks[name] = asyncio.create_task(
+                    task_factories[name](), name=name
+                )
 
     logger.info("Shutting down...")
-    for task in tasks:
+    for task in tasks.values():
         task.cancel()
-    await asyncio.gather(*tasks, return_exceptions=True)
+    await asyncio.gather(*tasks.values(), return_exceptions=True)
 
     try:
         await doc_logger.log_daily_summary()
