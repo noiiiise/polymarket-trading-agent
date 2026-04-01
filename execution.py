@@ -376,28 +376,44 @@ class OrderExecutor:
             return None
 
     async def get_active_markets(self, limit: int = 100) -> list[dict[str, Any]]:
-        """Fetch active markets from Gamma API sorted by volume."""
+        """Fetch active markets from Gamma API sorted by volume.
+        Paginates automatically when limit > 100 (Gamma API page cap)."""
         if config.PAPER_TRADING:
             return self._simulated_active_markets(limit)
 
         url = f"{config.POLYMARKET_GAMMA_API}/markets"
-        params = {
-            "limit": limit,
-            "active": "true",
-            "closed": "false",
-            "order": "volume",
-            "ascending": "false",
-        }
-        try:
-            assert self._session is not None
-            async with self._session.get(url, params=params) as resp:
-                if resp.status == 200:
-                    return await resp.json()  # type: ignore[no-any-return]
-                logger.error("Active markets fetch failed: %d", resp.status)
-                return []
-        except Exception as e:
-            logger.error("Active markets fetch error: %s", e)
-            return []
+        all_markets: list[dict[str, Any]] = []
+        page_size = min(limit, 100)
+        offset = 0
+
+        while len(all_markets) < limit:
+            params = {
+                "limit": page_size,
+                "offset": offset,
+                "active": "true",
+                "closed": "false",
+                "order": "volume",
+                "ascending": "false",
+            }
+            try:
+                assert self._session is not None
+                async with self._session.get(url, params=params) as resp:
+                    if resp.status == 200:
+                        page = await resp.json()
+                        if not page:
+                            break
+                        all_markets.extend(page)
+                        if len(page) < page_size:
+                            break
+                        offset += page_size
+                    else:
+                        logger.error("Active markets fetch failed: %d", resp.status)
+                        break
+            except Exception as e:
+                logger.error("Active markets fetch error: %s", e)
+                break
+
+        return all_markets[:limit]
 
     def _simulated_market(self, market_id: str) -> dict[str, Any]:
         return {

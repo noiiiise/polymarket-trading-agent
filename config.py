@@ -63,9 +63,6 @@ COPY_TRADE_LEADERBOARD_REFRESH_HOURS: int = 6       # Refresh leaderboard every 
 
 # ── Volume Spike Strategy ───────────────────────────────────────────────────
 VOLUME_SPIKE_MAX_POSITION_PCT: float = 0.15         # 15% of wallet per spike trade (HARD CAP)
-VOLUME_SPIKE_BUCKET_HOURS: int = 12                 # Volume tracking bucket size
-VOLUME_SPIKE_THRESHOLD_MULTIPLIER: float = 2.0      # Flag if volume > 2x rolling avg
-VOLUME_SPIKE_CHECK_INTERVAL_SEC: int = 43200        # Check every 12 hours (43200s)
 VOLUME_SPIKE_PRICE_WALL_PCT: float = 0.50           # 50%+ volume at 1-2 levels = wall
 VOLUME_SPIKE_FADE_ENABLED: bool = True              # Allow fading noisy spikes
 
