@@ -138,6 +138,7 @@ class VolumeSpikeStrategy:
 
                 self._alerted_markets[market_id] = spike_ratio
                 question = m.get("question", "")
+                liq = float(m.get("liquidityNum", 0))
                 spikes.append({
                     "market_id": market_id,
                     "question": question,
@@ -146,16 +147,15 @@ class VolumeSpikeStrategy:
                     "volume_24hr": volume_24hr,
                     "avg_daily": avg_daily,
                     "total_volume": total_volume,
-                    "liquidity": float(m.get("liquidityNum", 0)),
+                    "liquidity": liq,
                     "tokens": m.get("tokens", []),
                     "market": m,
                 })
                 logger.info(
-                    "SPIKE: %.1fx on '%s' — 24h=$%,.0f vs avg=$%,.0f/day "
-                    "(total=$%,.0f, liq=$%,.0f)",
+                    "SPIKE: %.1fx on '%s' — 24h=$%.0f vs avg=$%.0f/day "
+                    "(total=$%.0f, liq=$%.0f)",
                     spike_ratio, question[:60],
-                    volume_24hr, avg_daily, total_volume,
-                    float(m.get("liquidityNum", 0)),
+                    volume_24hr, avg_daily, total_volume, liq,
                 )
 
         spikes.sort(key=lambda s: s["spike_ratio"], reverse=True)
@@ -188,7 +188,7 @@ class VolumeSpikeStrategy:
                         val = float(w.get("currentValue", 0))
                         size = float(w.get("size", 0))
                         logger.info(
-                            "WHALE on '%s': %s holds %,.0f shares ($%,.0f) "
+                            "WHALE on '%s': %s holds %.0f shares ($%.0f) "
                             "outcome=%s",
                             spike["question"][:50], addr,
                             size, val, token.get("outcome", "?"),
@@ -251,7 +251,7 @@ class VolumeSpikeStrategy:
         )
 
         logger.info(
-            "Spike analysis '%s': wall=%s, whales=%d ($%,.0f) → %s — %s",
+            "Spike analysis '%s': wall=%s, whales=%d ($%.0f) -> %s — %s",
             spike["question"][:40],
             "YES" if price_wall else "NO",
             whale_count, whale_value,
