@@ -170,6 +170,11 @@ class VolumeSpikeStrategy:
         for spike in spikes:
             tokens = spike.get("tokens", [])
             if not tokens:
+                clob_market = await self._executor.get_clob_market(spike["market_id"])
+                if clob_market:
+                    tokens = clob_market.get("tokens", [])
+                    spike["tokens"] = tokens
+            if not tokens:
                 continue
 
             for token in tokens:
@@ -230,9 +235,15 @@ class VolumeSpikeStrategy:
         tokens = spike.get("tokens", [])
 
         if not tokens:
+            clob_market = await self._executor.get_clob_market(market_id)
+            if clob_market:
+                tokens = clob_market.get("tokens", [])
+                spike["tokens"] = tokens
+
+        if not tokens:
+            logger.debug("No tokens found for spike on '%s', skipping", spike["question"][:40])
             return
 
-        # Pick the outcome with the higher price (momentum direction)
         best_token = max(tokens, key=lambda t: float(t.get("price", 0)))
         outcome = best_token.get("outcome", "YES").upper()
         token_id = best_token.get("token_id", "")

@@ -375,6 +375,21 @@ class OrderExecutor:
             logger.error("Market info fetch error for %s: %s", market_id[:16], e)
             return None
 
+    async def get_clob_market(self, condition_id: str) -> dict[str, Any] | None:
+        """Fetch market data from the CLOB API (includes token IDs)."""
+        if config.PAPER_TRADING:
+            return self._simulated_market(condition_id)
+        url = f"{config.POLYMARKET_REST_BASE}/markets/{condition_id}"
+        try:
+            assert self._session is not None
+            async with self._session.get(url) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                logger.debug("CLOB market lookup %d for %s", resp.status, condition_id[:16])
+        except Exception as e:
+            logger.debug("CLOB market lookup failed for %s: %s", condition_id[:16], e)
+        return None
+
     async def get_active_markets(self, limit: int = 100) -> list[dict[str, Any]]:
         """Fetch active markets from Gamma API sorted by volume.
         Paginates automatically when limit > 100 (Gamma API page cap)."""
