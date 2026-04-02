@@ -107,12 +107,12 @@ class VolumeSpikeStrategy:
         spikes: list[dict[str, Any]] = []
 
         for m in markets:
-            market_id = (
-                m.get("id") or m.get("conditionId")
-                or m.get("condition_id", "")
+            condition_id = (
+                m.get("conditionId") or m.get("condition_id", "")
             )
-            if not market_id:
+            if not condition_id:
                 continue
+            market_id = condition_id
 
             total_volume = float(m.get("volume", 0))
             volume_24hr = float(m.get("volume24hr", 0))
