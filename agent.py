@@ -75,7 +75,21 @@ async def run_agent() -> None:
 
     wallet_mgr = WalletManager()
     executor = OrderExecutor(db)
-    await executor.start()
+    # Retry executor startup so a transient CLOB rate-limit doesn't crash-loop Railway.
+    for _attempt in range(1, 6):
+        try:
+            await executor.start()
+            break
+        except Exception as _exc:
+            _wait = min(60 * _attempt, 300)
+            logger.warning(
+                "Executor startup failed (attempt %d/5): %s — retrying in %ds",
+                _attempt, _exc, _wait,
+            )
+            await asyncio.sleep(_wait)
+    else:
+        logger.critical("Could not start executor after 5 attempts — exiting")
+        sys.exit(1)
     wallet_mgr.set_executor(executor)
     await wallet_mgr.start(db)
 

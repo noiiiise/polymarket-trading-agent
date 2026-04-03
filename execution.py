@@ -82,29 +82,63 @@ class OrderExecutor:
     async def _init_clob_client(self) -> None:
         """
         Initialize the py-clob-client with real credentials.
-        Uses explicit creds from env if provided; otherwise derives them
-        from the private key via EIP-712 signature (same result as Polymarket UI).
+        Prefers cached credentials from env vars (POLYMARKET_API_KEY/SECRET/PASSPHRASE)
+        to avoid CLOB API calls on every startup. Falls back to derivation with
+        exponential backoff so rate-limit crashes don't crash-loop Railway.
         """
+        from py_clob_client.clob_types import ApiCreds
         loop = asyncio.get_event_loop()
 
-        # Always derive fresh credentials from the private key.
-        # Explicit env-var creds (SECRET/PASSPHRASE) can go stale;
-        # derivation is deterministic and always produces valid creds.
-        logger.info("Deriving API credentials from private key...")
-        tmp = ClobClient(
-            host=config.POLYMARKET_REST_BASE,
-            chain_id=POLYGON,
-            key=config.POLYMARKET_PRIVATE_KEY,
-        )
-        try:
-            creds = await loop.run_in_executor(
-                None, tmp.create_or_derive_api_creds
+        cached_key = config.POLYMARKET_API_KEY
+        cached_secret = config.POLYMARKET_API_SECRET
+        cached_pass = config.POLYMARKET_API_PASSPHRASE
+
+        if cached_key and cached_secret and cached_pass:
+            logger.info(
+                "Using cached API credentials from env vars (key=%s...)", cached_key[:8]
             )
-        except AttributeError:
-            creds = await loop.run_in_executor(None, tmp.derive_api_key)
-        logger.info(
-            "API credentials derived (key=%s...)", creds.api_key[:8] if creds else "?"
-        )
+            creds = ApiCreds(
+                api_key=cached_key,
+                api_secret=cached_secret,
+                api_passphrase=cached_pass,
+            )
+        else:
+            logger.info("Deriving API credentials from private key (no env vars cached)...")
+            tmp = ClobClient(
+                host=config.POLYMARKET_REST_BASE,
+                chain_id=POLYGON,
+                key=config.POLYMARKET_PRIVATE_KEY,
+            )
+            creds = None
+            for attempt in range(1, 8):
+                try:
+                    try:
+                        creds = await loop.run_in_executor(
+                            None, tmp.create_or_derive_api_creds
+                        )
+                    except AttributeError:
+                        creds = await loop.run_in_executor(None, tmp.derive_api_key)
+                    break
+                except Exception as exc:
+                    wait = min(30 * attempt, 180)
+                    logger.warning(
+                        "Credential derivation failed (attempt %d/7): %s — retrying in %ds",
+                        attempt, exc, wait,
+                    )
+                    await asyncio.sleep(wait)
+
+            if creds is None:
+                raise RuntimeError(
+                    "Could not derive CLOB API credentials after 7 attempts. "
+                    "Set POLYMARKET_API_KEY / POLYMARKET_API_SECRET / "
+                    "POLYMARKET_API_PASSPHRASE env vars to skip derivation."
+                )
+            logger.info(
+                "API credentials derived (key=%s...) — set POLYMARKET_API_KEY=%s "
+                "POLYMARKET_API_SECRET=%s POLYMARKET_API_PASSPHRASE=%s in Railway "
+                "to skip derivation on future restarts",
+                creds.api_key[:8], creds.api_key, creds.api_secret, creds.api_passphrase,
+            )
 
         # funder = the Polymarket proxy wallet address (differs from signing key).
         # signature_type=1 (POLY_PROXY) tells the order builder that the maker
