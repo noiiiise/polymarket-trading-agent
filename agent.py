@@ -102,7 +102,7 @@ async def run_agent() -> None:
         "copy_trade": lambda: copy_strategy.run(),
         "volume_spike": lambda: spike_strategy.run(),
         "daily_summary": lambda: _daily_summary_loop(doc_logger, shutdown_event),
-        "pending_sells": lambda: _pending_sells_loop(db, executor, wallet_mgr, shutdown_event),
+        "pending_sells": lambda: _pending_sells_loop(executor, wallet_mgr, shutdown_event),
     }
     tasks = {
         name: asyncio.create_task(factory(), name=name)
@@ -152,35 +152,45 @@ async def run_agent() -> None:
 
 
 async def _pending_sells_loop(
-    db: aiosqlite.Connection,
     executor: OrderExecutor,
     wallet: WalletManager,
     shutdown_event: asyncio.Event,
 ) -> None:
-    """Poll for queued SELL orders written by the dashboard /api/sell endpoint."""
+    """
+    Poll for queued SELL orders written by the dashboard /api/sell endpoint.
+    Opens a fresh DB connection each cycle to avoid WAL read-snapshot isolation
+    preventing the agent from seeing rows committed by the dashboard process.
+    """
     while not shutdown_event.is_set():
         try:
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS pending_sells (
-                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                    token_id   TEXT NOT NULL,
-                    market_id  TEXT NOT NULL DEFAULT '',
-                    size       REAL NOT NULL,
-                    price      REAL NOT NULL,
-                    created_at TEXT NOT NULL,
-                    executed   INTEGER NOT NULL DEFAULT 0
-                )
-            """)
-            await db.commit()
+            # Fresh connection each iteration so we always see the latest WAL data.
+            async with aiosqlite.connect(config.SQLITE_DB_PATH) as conn:
+                conn.row_factory = aiosqlite.Row
+                await conn.execute("PRAGMA journal_mode=WAL")
+                await conn.execute("PRAGMA busy_timeout=5000")
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS pending_sells (
+                        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                        token_id   TEXT NOT NULL,
+                        market_id  TEXT NOT NULL DEFAULT '',
+                        size       REAL NOT NULL,
+                        price      REAL NOT NULL,
+                        created_at TEXT NOT NULL,
+                        executed   INTEGER NOT NULL DEFAULT 0
+                    )
+                """)
+                await conn.commit()
 
-            rows = await db.execute_fetchall(
-                "SELECT id, token_id, market_id, size, price FROM pending_sells WHERE executed=0"
-            )
+                rows = await conn.execute_fetchall(
+                    "SELECT id, token_id, market_id, size, price FROM pending_sells WHERE executed=0"
+                )
+
             for row in rows:
                 token_id = row["token_id"]
                 market_id = row["market_id"] or token_id
                 size = float(row["size"])
                 price = float(row["price"])
+                row_id = row["id"]
                 logger.info(
                     "Processing pending SELL: token=%s size=%.2f price=%.4f",
                     token_id[:20], size, price,
@@ -198,10 +208,12 @@ async def _pending_sells_loop(
                 except Exception as e:
                     logger.error("Pending SELL failed for %s: %s", token_id[:20], e)
 
-                await db.execute(
-                    "UPDATE pending_sells SET executed=1 WHERE id=?", (row["id"],)
-                )
-                await db.commit()
+                async with aiosqlite.connect(config.SQLITE_DB_PATH) as conn:
+                    await conn.execute("PRAGMA journal_mode=WAL")
+                    await conn.execute(
+                        "UPDATE pending_sells SET executed=1 WHERE id=?", (row_id,)
+                    )
+                    await conn.commit()
                 await wallet.refresh()
 
         except asyncio.CancelledError:
