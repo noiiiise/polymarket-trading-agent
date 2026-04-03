@@ -460,11 +460,6 @@ class CopyTradeStrategy:
             return
         try:
             result = await self._executor.place_exit_sell(token_id, exit_price, size)
-            await self._db.execute(
-                "UPDATE positions SET exit_target=? WHERE id=?",
-                (exit_price, position_id),
-            )
-            await self._db.commit()
             logger.info(
                 "Exit order placed: position=%d sell %.2f shares @ $%.4f (+%.0f%% target)",
                 position_id, size, exit_price,
@@ -472,9 +467,26 @@ class CopyTradeStrategy:
             )
             logger.debug("Exit order CLOB response: %s", result)
         except Exception as e:
-            logger.warning(
-                "Exit order placement failed for position %d: %s", position_id, e
-            )
+            e_str = str(e)
+            # "balance is not enough" where balance == sum of active orders means
+            # a sell order for this position is ALREADY in the CLOB order book.
+            # Treat as success — just record the target.
+            if "sum of active orders" in e_str and "balance is not enough" in e_str:
+                logger.info(
+                    "Exit order already active in CLOB for position %d (%.2f @ $%.4f)",
+                    position_id, size, exit_price,
+                )
+            else:
+                logger.warning(
+                    "Exit order placement failed for position %d: %s", position_id, e
+                )
+                return  # Don't record exit_target if placement genuinely failed
+
+        await self._db.execute(
+            "UPDATE positions SET exit_target=? WHERE id=?",
+            (exit_price, position_id),
+        )
+        await self._db.commit()
 
     async def _reconcile_own_positions(self) -> None:
         """
