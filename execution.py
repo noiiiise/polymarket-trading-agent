@@ -377,21 +377,25 @@ class OrderExecutor:
 
     async def get_exchange_balance(self) -> float:
         """
-        Fetch free USDC.e in the Polymarket CLOB exchange account.
-        This is the 'deposited but not yet allocated to a position' balance
-        that is available for placing new buy orders.
+        Fetch free USDC.e (collateral) in the Polymarket CLOB exchange account.
+        This is the deposited-but-not-deployed balance available for new buy orders.
         Returns 0.0 in paper mode or if the call fails.
         """
         if config.PAPER_TRADING:
             return 0.0
         if self._clob_client is None:
             return 0.0
+        from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
         loop = asyncio.get_event_loop()
         try:
-            resp = await loop.run_in_executor(None, self._clob_client.get_balance)
-            # py_clob_client returns a dict: {"usdcBalance": "123.45"} (string)
-            raw = resp.get("usdcBalance") or resp.get("balance") or 0
-            balance = float(raw)
+            params = BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
+            resp = await loop.run_in_executor(
+                None,
+                functools.partial(self._clob_client.get_balance_allowance, params),
+            )
+            # resp is a dict: {"balance": "123450000", "allowance": "...", ...}
+            raw = resp.get("balance") or 0
+            balance = float(raw) / 1e6  # USDC.e has 6 decimals
             logger.debug("CLOB exchange balance: $%.2f", balance)
             return balance
         except Exception as e:
