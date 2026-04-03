@@ -261,7 +261,39 @@ def sell_position():
     finally:
         db.close()
 
-    return jsonify({"ok": True, "queued": {"token_id": token_id[:20], "size": size, "price": price}})
+    import os as _os
+    abs_db = _os.path.abspath(config.SQLITE_DB_PATH)
+    return jsonify({
+        "ok": True,
+        "queued": {"token_id": token_id[:20], "size": size, "price": price},
+        "db_path": abs_db,
+    })
+
+
+@app.route("/api/pending_sells")
+def get_pending_sells():
+    import os as _os
+    db = _db()
+    try:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS pending_sells (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token_id TEXT NOT NULL,
+                market_id TEXT NOT NULL DEFAULT '',
+                size REAL NOT NULL,
+                price REAL NOT NULL,
+                created_at TEXT NOT NULL,
+                executed INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        rows = db.execute("SELECT * FROM pending_sells ORDER BY id DESC LIMIT 20").fetchall()
+        cols = [d[0] for d in db.execute("SELECT * FROM pending_sells LIMIT 0").description or []]
+        return jsonify({
+            "db_path": _os.path.abspath(config.SQLITE_DB_PATH),
+            "rows": [dict(zip(cols, r)) for r in rows] if cols else [],
+        })
+    finally:
+        db.close()
 
 
 @app.route("/api/strategy_doc")
