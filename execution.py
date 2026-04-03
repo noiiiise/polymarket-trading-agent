@@ -375,6 +375,29 @@ class OrderExecutor:
             logger.error("Market info fetch error for %s: %s", market_id[:16], e)
             return None
 
+    async def get_exchange_balance(self) -> float:
+        """
+        Fetch free USDC.e in the Polymarket CLOB exchange account.
+        This is the 'deposited but not yet allocated to a position' balance
+        that is available for placing new buy orders.
+        Returns 0.0 in paper mode or if the call fails.
+        """
+        if config.PAPER_TRADING:
+            return 0.0
+        if self._clob_client is None:
+            return 0.0
+        loop = asyncio.get_event_loop()
+        try:
+            resp = await loop.run_in_executor(None, self._clob_client.get_balance)
+            # py_clob_client returns a dict: {"usdcBalance": "123.45"} (string)
+            raw = resp.get("usdcBalance") or resp.get("balance") or 0
+            balance = float(raw)
+            logger.debug("CLOB exchange balance: $%.2f", balance)
+            return balance
+        except Exception as e:
+            logger.debug("CLOB exchange balance fetch failed: %s", e)
+            return 0.0
+
     async def get_clob_market(self, condition_id: str) -> dict[str, Any] | None:
         """Fetch market data from the CLOB API (includes token IDs)."""
         if config.PAPER_TRADING:

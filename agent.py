@@ -74,10 +74,10 @@ async def run_agent() -> None:
     db = await database.get_db()
 
     wallet_mgr = WalletManager()
-    await wallet_mgr.start(db)
-
     executor = OrderExecutor(db)
     await executor.start()
+    wallet_mgr.set_executor(executor)
+    await wallet_mgr.start(db)
 
     copy_strategy = CopyTradeStrategy(db, wallet_mgr, executor)
     await copy_strategy.start()

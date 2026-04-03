@@ -14,6 +14,10 @@ import aiosqlite
 import config
 import database
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from execution import OrderExecutor
+
 logger = logging.getLogger("wallet")
 
 
@@ -35,6 +39,11 @@ class WalletManager:
         self._db: aiosqlite.Connection | None = None
         self._running: bool = False
         self._wallet_address: str = config.POLYMARKET_WALLET_ADDRESS
+        self._executor: "OrderExecutor | None" = None
+
+    def set_executor(self, executor: "OrderExecutor") -> None:
+        """Wire in the order executor so we can query the CLOB exchange balance."""
+        self._executor = executor
 
         # RPC rotation state — start with the primary, then cycle through fallbacks
         self._rpc_pool: list[str] = [config.POLYGON_RPC_URL] + [
@@ -66,14 +75,19 @@ class WalletManager:
     async def refresh(self) -> None:
         """Refresh balance and positions from chain/db."""
         if not config.PAPER_TRADING:
-            cash = await self._fetch_balance_onchain()
+            onchain = await self._fetch_balance_onchain()
+            exchange = await self._fetch_exchange_balance()
+            cash = onchain + exchange
             portfolio = await self._fetch_portfolio_value()
             total = cash + portfolio
 
             if total > 0.0:
                 self.balance = total
                 self.cash_balance = cash
-                logger.info("Wallet balance: $%.2f (cash=$%.2f + positions=$%.2f)", total, cash, portfolio)
+                logger.info(
+                    "Wallet balance: $%.2f (on-chain=$%.2f + exchange=$%.2f + positions=$%.2f)",
+                    total, onchain, exchange, portfolio,
+                )
             else:
                 logger.error("All balance fetch methods returned 0, keeping last known: $%.2f", self.balance)
         else:
@@ -189,6 +203,15 @@ class WalletManager:
                         return total
         except Exception as e:
             logger.debug("Portfolio value fetch failed: %s", e)
+        return 0.0
+
+    async def _fetch_exchange_balance(self) -> float:
+        """
+        Fetch free USDC.e in the Polymarket CLOB exchange account (deposited, not deployed).
+        Uses the executor's CLOB client if available.
+        """
+        if self._executor is not None:
+            return await self._executor.get_exchange_balance()
         return 0.0
 
     async def _fetch_balance_gamma(self) -> float:
