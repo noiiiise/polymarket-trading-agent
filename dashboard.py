@@ -224,6 +224,46 @@ def logs():
     return jsonify({"lines": lines})
 
 
+@app.route("/api/sell", methods=["POST"])
+def sell_position():
+    """
+    Queue a SELL order for a given token.
+    Body: { "token_id": "...", "size": 22.95, "price": 0.11, "market_id": "0x..." }
+    Writes to a pending_sells table; the agent picks it up within 30s.
+    """
+    data = request.get_json(force=True) or {}
+    token_id = (data.get("token_id") or "").strip()
+    size = float(data.get("size", 0))
+    price = float(data.get("price", 0))
+    market_id = (data.get("market_id") or "").strip()
+
+    if not token_id or size <= 0 or price <= 0:
+        return jsonify({"error": "token_id, size, and price are required"}), 400
+
+    db = _db()
+    try:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS pending_sells (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                token_id   TEXT NOT NULL,
+                market_id  TEXT NOT NULL DEFAULT '',
+                size       REAL NOT NULL,
+                price      REAL NOT NULL,
+                created_at TEXT NOT NULL,
+                executed   INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        db.execute(
+            "INSERT INTO pending_sells (token_id, market_id, size, price, created_at) VALUES (?,?,?,?,?)",
+            (token_id, market_id, size, price, datetime.now(timezone.utc).isoformat()),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    return jsonify({"ok": True, "queued": {"token_id": token_id[:20], "size": size, "price": price}})
+
+
 @app.route("/api/strategy_doc")
 def strategy_doc():
     doc_path = Path(config.STRATEGY_DOC_PATH)

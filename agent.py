@@ -10,6 +10,7 @@ import signal
 import sys
 from datetime import datetime
 
+import aiosqlite
 import config
 import database
 from execution import OrderExecutor
@@ -101,6 +102,7 @@ async def run_agent() -> None:
         "copy_trade": lambda: copy_strategy.run(),
         "volume_spike": lambda: spike_strategy.run(),
         "daily_summary": lambda: _daily_summary_loop(doc_logger, shutdown_event),
+        "pending_sells": lambda: _pending_sells_loop(db, executor, wallet_mgr, shutdown_event),
     }
     tasks = {
         name: asyncio.create_task(factory(), name=name)
@@ -147,6 +149,71 @@ async def run_agent() -> None:
     await doc_logger.stop()
     await db.close()
     logger.info("Agent shut down cleanly.")
+
+
+async def _pending_sells_loop(
+    db: aiosqlite.Connection,
+    executor: OrderExecutor,
+    wallet: WalletManager,
+    shutdown_event: asyncio.Event,
+) -> None:
+    """Poll for queued SELL orders written by the dashboard /api/sell endpoint."""
+    while not shutdown_event.is_set():
+        try:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS pending_sells (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    token_id   TEXT NOT NULL,
+                    market_id  TEXT NOT NULL DEFAULT '',
+                    size       REAL NOT NULL,
+                    price      REAL NOT NULL,
+                    created_at TEXT NOT NULL,
+                    executed   INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+            await db.commit()
+
+            rows = await db.execute_fetchall(
+                "SELECT id, token_id, market_id, size, price FROM pending_sells WHERE executed=0"
+            )
+            for row in rows:
+                token_id = row["token_id"]
+                market_id = row["market_id"] or token_id
+                size = float(row["size"])
+                price = float(row["price"])
+                logger.info(
+                    "Processing pending SELL: token=%s size=%.2f price=%.4f",
+                    token_id[:20], size, price,
+                )
+                try:
+                    result = await executor.place_order(
+                        token_id=token_id,
+                        market_id=market_id,
+                        outcome="SELL",
+                        side="SELL",
+                        price=price,
+                        size=size,
+                    )
+                    logger.info("Pending SELL result: %s", result)
+                except Exception as e:
+                    logger.error("Pending SELL failed for %s: %s", token_id[:20], e)
+
+                await db.execute(
+                    "UPDATE pending_sells SET executed=1 WHERE id=?", (row["id"],)
+                )
+                await db.commit()
+                await wallet.refresh()
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error("Pending sells loop error: %s", e)
+
+        try:
+            await asyncio.wait_for(shutdown_event.wait(), timeout=30)
+            break
+        except asyncio.TimeoutError:
+            pass
 
 
 async def _daily_summary_loop(doc_logger: StrategyDocLogger, shutdown_event: asyncio.Event) -> None:

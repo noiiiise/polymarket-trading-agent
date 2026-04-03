@@ -311,10 +311,17 @@ class CopyTradeStrategy:
                 try:
                     end_date = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
                     hours_until = (end_date - datetime.now(timezone.utc)).total_seconds() / 3600
+                    days_until = hours_until / 24.0
                     if hours_until < config.COPY_TRADE_MIN_RESOLUTION_HOURS:
                         logger.info(
-                            "Skip copy: market resolves in %.1fh (min %.1fh)",
+                            "Skip copy: market resolves too soon in %.1fh (min %.1fh)",
                             hours_until, config.COPY_TRADE_MIN_RESOLUTION_HOURS,
+                        )
+                        return
+                    if days_until > config.COPY_TRADE_MAX_RESOLUTION_DAYS:
+                        logger.info(
+                            "Skip copy: market resolves too far out in %.1fd (max %.0fd)",
+                            days_until, config.COPY_TRADE_MAX_RESOLUTION_DAYS,
                         )
                         return
                 except (ValueError, TypeError):
