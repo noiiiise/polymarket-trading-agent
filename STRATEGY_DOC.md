@@ -13,12 +13,12 @@
 
 ## Copy Trade Performance
 
-**5 open position(s)** across 5 market(s) · total cost basis $51.56
+**6 open position(s)** across 6 market(s) · total cost basis $59.03
 
 ### Open Positions by Source Wallet
 | Wallet | Open Trades | Cost Basis | First Opened |
 |--------|-------------|------------|--------------|
-| `0x7f3c8979d0afa0...` | 5 | $51.56 | 2026-04-03T15:34 |
+| `0x7f3c8979d0afa0...` | 6 | $59.03 | 2026-04-03T15:34 |
 
 ## Volume Spike Learnings
 
@@ -26,9 +26,9 @@
 
 ## Observations & Adaptations
 
-- Agent has 5 open position(s) across 5 unique market(s) with $51.56 total cost basis. Awaiting resolution to calculate win rate and P&L.
+- Agent has 6 open position(s) across 6 unique market(s) with $59.03 total cost basis. Awaiting resolution to calculate win rate and P&L.
 - **Geo-block active:** 58 order attempt(s) blocked by Polymarket region restriction (HTTP 403). Agent must run from a supported region (e.g. deploy on Railway US region) to execute live trades.
-- Positions sourced from 1 tracked wallet(s). Largest contributor: `0x7f3c8979d0afa0...` (5 trade(s), $51.56 cost basis).
+- Positions sourced from 1 tracked wallet(s). Largest contributor: `0x7f3c8979d0afa0...` (6 trade(s), $59.03 cost basis).
 
 ## Current Open Positions
 
@@ -38,4 +38,5 @@
 | Will Bitcoin dip to $25,000 by December  | NO | copy_trade | $0.8600 | 7.26 | 2026-04-03T15:34 |
 | Will Bitcoin dip to $30,000 by December  | NO | copy_trade | $0.8100 | 8.46 | 2026-04-03T15:34 |
 | Will Ethereum dip to $800 by December 31 | NO | copy_trade | $0.8000 | 8.56 | 2026-04-03T15:34 |
+| Will Bitcoin dip to $45,000 by December  | NO | copy_trade | $0.5200 | 14.37 | 2026-04-03T15:34 |
 | Will Bitcoin dip to $20,000 by December  | NO | copy_trade | $0.9000 | 32.45 | 2026-04-03T15:34 |
