@@ -507,6 +507,13 @@ class CopyTradeStrategy:
             if not market_id or entry_price <= 0 or size <= 0:
                 continue
 
+            # Normalize outcome — DB only stores 'YES'/'NO'
+            outcome_norm = outcome.upper()
+            if outcome_norm not in ("YES", "NO"):
+                continue  # Sports markets ('Ducks', 'Blues', etc.) — skip
+
+            outcome = outcome_norm
+
             existing = await self._db.execute_fetchall(
                 "SELECT id FROM positions WHERE market_id=? AND status='open'",
                 (market_id,),
