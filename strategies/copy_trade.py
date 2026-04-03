@@ -63,6 +63,7 @@ class CopyTradeStrategy:
         logger.info("Copy trade strategy starting...")
         await self._refresh_leaderboard()
         logger.info("Tracking %d wallets", len(self._tracked_wallets))
+        await self._place_exits_for_existing_positions()
 
     async def stop(self) -> None:
         self._running = False
@@ -396,6 +397,8 @@ class CopyTradeStrategy:
             wallet_info.get("userName", source_address[:12]), wallet_info["rank"],
         )
 
+        exit_target = round(min(price * (1.0 + config.COPY_TRADE_EXIT_PROFIT_PCT), 0.99), 2)
+
         position_id = await database.insert_position(
             self._db,
             market_id=market_id,
@@ -407,6 +410,8 @@ class CopyTradeStrategy:
             size=size_tokens,
             strategy="copy_trade",
             source_wallet=source_address,
+            token_id=token_id,
+            exit_target=exit_target,
             notes=f"Copied from {wallet_info.get('userName', 'anon')} (rank #{wallet_info['rank']})",
         )
 
@@ -427,10 +432,89 @@ class CopyTradeStrategy:
             await self._db.commit()
             logger.warning("Copy trade order failed for %s: %s", market_id[:16], result.get("error"))
         else:
-            # Immediately mark this market as entered so subsequent wallets in this
-            # cycle don't copy it again before the wallet manager refreshes.
             self._markets_entered_this_cycle.add(market_id)
             await self._wallet.refresh()
+            # Place limit SELL at +5% so we exit on any 5% rally without waiting for resolution.
+            await self._place_exit_order(position_id, token_id, exit_target, size_tokens)
+
+
+    # ── Exit order helpers ───────────────────────────────────────────────────
+
+    async def _place_exit_order(
+        self,
+        position_id: int,
+        token_id: str,
+        exit_price: float,
+        size: float,
+    ) -> None:
+        """Place a +5% profit-taking limit SELL and record target on the position."""
+        if size < 5.0:
+            logger.info(
+                "Exit order skipped: size %.2f below CLOB minimum (position_id=%d)",
+                size, position_id,
+            )
+            return
+        if not token_id:
+            logger.warning("Exit order skipped: no token_id for position %d", position_id)
+            return
+        try:
+            result = await self._executor.place_exit_sell(token_id, exit_price, size)
+            await self._db.execute(
+                "UPDATE positions SET exit_target=? WHERE id=?",
+                (exit_price, position_id),
+            )
+            await self._db.commit()
+            logger.info(
+                "Exit order placed: position=%d sell %.2f shares @ $%.4f (+%.0f%% target)",
+                position_id, size, exit_price,
+                config.COPY_TRADE_EXIT_PROFIT_PCT * 100,
+            )
+            logger.debug("Exit order CLOB response: %s", result)
+        except Exception as e:
+            logger.warning(
+                "Exit order placement failed for position %d: %s", position_id, e
+            )
+
+    async def _place_exits_for_existing_positions(self) -> None:
+        """
+        On startup, place exit SELL orders for any open copy-trade positions
+        that don't yet have one (e.g. positions opened before this feature,
+        or exits that failed on a previous run).
+        """
+        rows = await self._db.execute_fetchall(
+            """SELECT id, market_id, outcome, entry_price, size, token_id, exit_target
+               FROM positions
+               WHERE status='open' AND strategy='copy_trade'
+                 AND exit_target IS NULL"""
+        )
+        if not rows:
+            logger.info("No existing positions need exit orders.")
+            return
+
+        logger.info(
+            "Placing exit orders for %d existing copy-trade positions…", len(rows)
+        )
+        for row in rows:
+            pos_id = row["id"]
+            token_id: str = row["token_id"] or ""
+            entry_price = float(row["entry_price"])
+            size = float(row["size"])
+            outcome = row["outcome"]
+
+            # Re-fetch token_id from CLOB if not stored
+            if not token_id:
+                clob_market = await self._executor.get_clob_market(row["market_id"])
+                if clob_market:
+                    token_id = _get_token_id(clob_market, outcome)
+                    if token_id:
+                        await self._db.execute(
+                            "UPDATE positions SET token_id=? WHERE id=?",
+                            (token_id, pos_id),
+                        )
+                        await self._db.commit()
+
+            exit_price = round(min(entry_price * (1.0 + config.COPY_TRADE_EXIT_PROFIT_PCT), 0.99), 2)
+            await self._place_exit_order(pos_id, token_id, exit_price, size)
 
 
 # ── Module-level helpers ─────────────────────────────────────────────────────

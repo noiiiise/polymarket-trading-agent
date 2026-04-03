@@ -375,6 +375,21 @@ class OrderExecutor:
             logger.error("Market info fetch error for %s: %s", market_id[:16], e)
             return None
 
+    async def place_exit_sell(
+        self, token_id: str, price: float, size: float
+    ) -> dict[str, Any]:
+        """
+        Place a GTC limit SELL order as a profit-taking exit.
+        Does not create a DB position record — the calling strategy handles that.
+        """
+        if config.PAPER_TRADING:
+            logger.info(
+                "[PAPER] Exit sell queued: token=%s price=%.4f size=%.2f",
+                token_id[:16], price, size,
+            )
+            return {"status": "paper", "order_id": "paper-exit", "price": price, "size": size}
+        return await self._execute_live_order(0, token_id, "SELL", price, size)
+
     async def get_exchange_balance(self) -> float:
         """
         Fetch free USDC.e (collateral) in the Polymarket CLOB exchange account.

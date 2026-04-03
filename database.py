@@ -26,13 +26,26 @@ async def get_db() -> aiosqlite.Connection:
 
 
 async def init_db() -> None:
-    """Create all tables if they don't exist."""
+    """Create all tables and run migrations if needed."""
     db = await get_db()
     try:
         await db.executescript(SCHEMA)
         await db.commit()
+        # Migrations: add new columns to existing tables without dropping data.
+        for sql in _MIGRATIONS:
+            try:
+                await db.execute(sql)
+                await db.commit()
+            except Exception:
+                pass  # Column already exists — ignore
     finally:
         await db.close()
+
+# ALTER TABLE migrations run once; SQLite raises if column already exists (caught above).
+_MIGRATIONS = [
+    "ALTER TABLE positions ADD COLUMN token_id TEXT DEFAULT NULL",
+    "ALTER TABLE positions ADD COLUMN exit_target REAL DEFAULT NULL",
+]
 
 
 SCHEMA = """
@@ -65,6 +78,8 @@ CREATE TABLE IF NOT EXISTS positions (
     exit_price      REAL DEFAULT NULL,
     pnl             REAL DEFAULT NULL,
     status          TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'closed', 'cancelled')),
+    token_id        TEXT DEFAULT NULL,
+    exit_target     REAL DEFAULT NULL,
     notes           TEXT DEFAULT ''
 );
 
@@ -179,6 +194,8 @@ async def insert_position(
     size: float,
     strategy: str,
     source_wallet: str | None = None,
+    token_id: str | None = None,
+    exit_target: float | None = None,
     notes: str = "",
 ) -> int:
     """Insert a new open position and return its ID."""
@@ -186,11 +203,12 @@ async def insert_position(
     cursor = await db.execute(
         """INSERT INTO positions
            (market_id, market_slug, market_question, outcome, side, entry_price,
-            size, cost_basis, strategy, source_wallet, opened_at, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            size, cost_basis, strategy, source_wallet, opened_at,
+            token_id, exit_target, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (market_id, market_slug, market_question, outcome, side, entry_price,
          size, cost_basis, strategy, source_wallet,
-         datetime.utcnow().isoformat(), notes),
+         datetime.utcnow().isoformat(), token_id, exit_target, notes),
     )
     await db.commit()
     return cursor.lastrowid  # type: ignore[return-value]
