@@ -76,8 +76,11 @@ class WalletManager:
         """Refresh balance and positions from chain/db."""
         if not config.PAPER_TRADING:
             onchain = await self._fetch_balance_onchain()
+            # CLOB exchange balance returns the same ERC20 value as on-chain for
+            # the proxy wallet model. Use max() to avoid double-counting if they
+            # ever diverge, but don't sum them.
             exchange = await self._fetch_exchange_balance()
-            cash = onchain + exchange
+            cash = max(onchain, exchange)
             portfolio = await self._fetch_portfolio_value()
             total = cash + portfolio
 
@@ -85,8 +88,8 @@ class WalletManager:
                 self.balance = total
                 self.cash_balance = cash
                 logger.info(
-                    "Wallet balance: $%.2f (on-chain=$%.2f + exchange=$%.2f + positions=$%.2f)",
-                    total, onchain, exchange, portfolio,
+                    "Wallet balance: $%.2f (cash=$%.2f + positions=$%.2f)",
+                    total, cash, portfolio,
                 )
             else:
                 logger.error("All balance fetch methods returned 0, keeping last known: $%.2f", self.balance)
