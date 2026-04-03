@@ -63,6 +63,7 @@ class CopyTradeStrategy:
         logger.info("Copy trade strategy starting...")
         await self._refresh_leaderboard()
         logger.info("Tracking %d wallets", len(self._tracked_wallets))
+        await self._reconcile_own_positions()
         await self._place_exits_for_existing_positions()
 
     async def stop(self) -> None:
@@ -474,6 +475,70 @@ class CopyTradeStrategy:
             logger.warning(
                 "Exit order placement failed for position %d: %s", position_id, e
             )
+
+    async def _reconcile_own_positions(self) -> None:
+        """
+        Fetch the agent wallet's live positions from the Data API and insert DB
+        records for any that aren't tracked.  This handles positions placed before
+        DB tracking was reliable, or positions whose initial order record was
+        cancelled despite the on-chain trade going through.
+        """
+        own_addr = config.POLYMARKET_WALLET_ADDRESS
+        if not own_addr:
+            return
+
+        live_positions = await self._fetch_wallet_positions(own_addr)
+        if not live_positions:
+            logger.info("Reconcile: no live positions found for own wallet.")
+            return
+
+        reconciled = 0
+        for pos in live_positions:
+            current_value = float(pos.get("current_value", 0))
+            if current_value <= 0.01:
+                continue  # Skip worthless/expired positions
+
+            market_id = pos.get("market_id", "")
+            token_id = pos.get("token_id", "")
+            outcome = pos.get("outcome", "YES")
+            entry_price = float(pos.get("avg_price", 0))
+            size = float(pos.get("size", 0))
+
+            if not market_id or entry_price <= 0 or size <= 0:
+                continue
+
+            existing = await self._db.execute_fetchall(
+                "SELECT id FROM positions WHERE market_id=? AND status='open'",
+                (market_id,),
+            )
+            if existing:
+                continue  # Already tracked
+
+            exit_target = round(min(entry_price * (1.0 + config.COPY_TRADE_EXIT_PROFIT_PCT), 0.99), 2)
+            pos_id = await database.insert_position(
+                self._db,
+                market_id=market_id,
+                market_slug=pos.get("market_slug", ""),
+                market_question=pos.get("market_question", ""),
+                outcome=outcome,
+                side="BUY",
+                entry_price=entry_price,
+                size=size,
+                strategy="copy_trade",
+                source_wallet="0x7f3c8979d0afa00007bae4747d5347122af05613",
+                token_id=token_id,
+                exit_target=None,
+                notes="Reconciled from wallet (pre-tracking position)",
+            )
+            logger.info(
+                "Reconciled position #%d: %s %s entry=%.4f size=%.2f exit_target=%.4f",
+                pos_id, outcome, (pos.get("market_question") or market_id)[:40],
+                entry_price, size, exit_target,
+            )
+            reconciled += 1
+
+        if reconciled:
+            logger.info("Reconciled %d untracked positions from wallet.", reconciled)
 
     async def _place_exits_for_existing_positions(self) -> None:
         """
