@@ -69,7 +69,7 @@ VOLUME_SPIKE_PRICE_WALL_PCT: float = 0.50           # 50%+ volume at 1-2 levels 
 VOLUME_SPIKE_FADE_ENABLED: bool = True              # Allow fading noisy spikes
 
 # ── Wallet / Risk Management ────────────────────────────────────────────────
-MAX_TOTAL_EXPOSURE_PCT: float = 0.90                # Total open positions <= 90% of wallet
+MAX_TOTAL_EXPOSURE_PCT: float = 0.99                # Allow up to 99% exposure (near-full deployment)
 BALANCE_REFRESH_INTERVAL_SEC: int = 120             # Refresh wallet balance every 2 min
 
 # ── Execution ───────────────────────────────────────────────────────────────
