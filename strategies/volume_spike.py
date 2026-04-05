@@ -244,7 +244,12 @@ class VolumeSpikeStrategy:
             logger.debug("No tokens found for spike on '%s', skipping", spike["question"][:40])
             return
 
-        best_token = max(tokens, key=lambda t: float(t.get("price", 0)))
+        # Guard against empty list before calling max() to avoid ValueError
+        priced = [t for t in tokens if t.get("price") is not None]
+        if not priced:
+            logger.debug("No priced tokens for spike on '%s', skipping", spike["question"][:40])
+            return
+        best_token = max(priced, key=lambda t: float(t.get("price", 0)))
         outcome = best_token.get("outcome", "YES").upper()
         token_id = best_token.get("token_id", "")
 

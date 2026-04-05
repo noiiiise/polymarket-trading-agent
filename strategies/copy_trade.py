@@ -76,9 +76,12 @@ class CopyTradeStrategy:
                 if self._should_refresh_leaderboard():
                     await self._refresh_leaderboard()
 
-                # Reset per-cycle dedup set so we never copy the same market twice
-                # in a single polling round, even if multiple tracked wallets hold it.
-                self._markets_entered_this_cycle: set[str] = set()
+                # Reset per-cycle dedup set atomically so we never copy the same market
+                # twice in a single polling round, even if multiple tracked wallets hold it.
+                # Assign a fresh set rather than calling .clear() to avoid a race where
+                # another coroutine reads the set while we're resetting it.
+                new_cycle_set: set[str] = set()
+                self._markets_entered_this_cycle = new_cycle_set
 
                 for address, info in self._tracked_wallets.items():
                     try:
@@ -544,9 +547,9 @@ class CopyTradeStrategy:
                 entry_price=entry_price,
                 size=size,
                 strategy="copy_trade",
-                source_wallet="0x7f3c8979d0afa00007bae4747d5347122af05613",
+                source_wallet=own_addr,
                 token_id=token_id,
-                exit_target=None,
+                exit_target=exit_target,
                 notes="Reconciled from wallet (pre-tracking position)",
             )
             logger.info(

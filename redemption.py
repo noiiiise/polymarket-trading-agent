@@ -128,20 +128,31 @@ class RedemptionManager:
                     market_id[:20], winning_outcome, len(positions_in_market),
                 )
 
-                # Attempt on-chain redemption (logs a warning if proxy wallet blocks it)
+                # Attempt on-chain redemption (logs a warning if proxy wallet blocks it).
+                # Only close positions in DB once we've confirmed the redemption was
+                # submitted (or we're in paper mode). If the tx reverts or fails, keep
+                # positions open so we don't lose track of tokens that weren't redeemed.
+                redeemed_ok = True
                 if not config.PAPER_TRADING:
-                    await self._redeem_on_chain(market_id)
+                    redeemed_ok = await self._redeem_on_chain(market_id)
 
-                # Always close positions in DB so P&L is recorded correctly
-                for pos in positions_in_market:
-                    won = (pos["outcome"].upper() == (winning_outcome or "").upper())
-                    exit_price = 1.0 if won else 0.0
-                    pnl = await database.close_position(self._db, pos["id"], exit_price)
-                    logger.info(
-                        "%s | market=%s | outcome=%s | entry=$%.4f | size=%.2f | P&L=$%.2f",
-                        "WON ✓" if won else "LOST ✗",
-                        market_id[:16], pos["outcome"],
-                        pos["entry_price"], pos["size"], pnl,
+                if redeemed_ok:
+                    for pos in positions_in_market:
+                        won = (pos["outcome"].upper() == (winning_outcome or "").upper())
+                        exit_price = 1.0 if won else 0.0
+                        pnl = await database.close_position(self._db, pos["id"], exit_price)
+                        logger.info(
+                            "%s | market=%s | outcome=%s | entry=$%.4f | size=%.2f | P&L=$%.2f",
+                            "WON ✓" if won else "LOST ✗",
+                            market_id[:16], pos["outcome"],
+                            pos["entry_price"], pos["size"], pnl,
+                        )
+                else:
+                    logger.warning(
+                        "Skipping DB close for market=%s — on-chain redemption did not "
+                        "succeed. Redeem manually at polymarket.com then the next "
+                        "resolution check will retry.",
+                        market_id[:16],
                     )
 
             except Exception as e:

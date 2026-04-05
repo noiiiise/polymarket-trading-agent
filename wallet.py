@@ -341,7 +341,7 @@ class WalletManager:
                 "Position size capped to available cash: $%.2f → $%.2f",
                 desired, cash_available,
             )
-        return min(desired, cash_available) if cash_available > 0 else desired
+        return max(0.0, min(desired, cash_available)) if cash_available > 0 else max(0.0, desired)
 
     def get_position_for_market(self, market_id: str) -> dict[str, Any] | None:
         """Check if we already have an open position in a market."""

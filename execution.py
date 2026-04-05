@@ -134,10 +134,10 @@ class OrderExecutor:
                     "POLYMARKET_API_PASSPHRASE env vars to skip derivation."
                 )
             logger.info(
-                "API credentials derived (key=%s...) — set POLYMARKET_API_KEY=%s "
-                "POLYMARKET_API_SECRET=%s POLYMARKET_API_PASSPHRASE=%s in Railway "
+                "API credentials derived (key=%s...) — set POLYMARKET_API_KEY, "
+                "POLYMARKET_API_SECRET, and POLYMARKET_API_PASSPHRASE in Railway "
                 "to skip derivation on future restarts",
-                creds.api_key[:8], creds.api_key, creds.api_secret, creds.api_passphrase,
+                creds.api_key[:8],
             )
 
         # funder = the Polymarket proxy wallet address (differs from signing key).

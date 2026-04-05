@@ -347,7 +347,13 @@ def add_observation():
     finally:
         db.close()
 
-    _inject_observation_into_doc(text, source, market_tag, now)
+    # Push to GitHub in a daemon thread so the Flask response isn't blocked
+    # by network I/O (GitHub API calls can take several seconds).
+    threading.Thread(
+        target=_inject_observation_into_doc,
+        args=(text, source, market_tag, now),
+        daemon=True,
+    ).start()
     return jsonify({"ok": True, "created_at": now})
 
 

@@ -138,7 +138,13 @@ async def run_agent(thread_stop: threading.Event) -> None:
     for task in tasks:
         task.cancel()
 
-    await asyncio.gather(*tasks, return_exceptions=True)
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True),
+            timeout=30,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("Some tasks did not finish within 30s shutdown window — forcing exit")
 
     # Final strategy doc update
     try:
