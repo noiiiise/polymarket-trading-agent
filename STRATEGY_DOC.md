@@ -18,164 +18,24 @@
 ### Open Positions by Source Wallet
 | Wallet | Open Trades | Cost Basis | First Opened |
 |--------|-------------|------------|--------------|
-| `0x7f3c8979d0afa0...` | 5 | $52.19 | 2026-04-04T23:34 |
+| `0x7f3c8979d0afa0...` | 5 | $52.19 | 2026-04-05T23:34 |
 
 ## Volume Spike Learnings
 
-### 2026-04-05T23:24 — will-the-price-of-ethereum-be- (NO)
-- **Magnitude:** 6.0x rolling average
-- **Price wall:** Yes
-- **Trend aligned:** No
-- **Decision:** enter
-- **Rationale:** Strong wall: 6.0x spike with price wall (no whale confirmation)
-
-### 2026-04-05T23:19 — bra-cor1-int-2026-04-05-total- (UNDER)
-- **Magnitude:** 8.4x rolling average
-- **Price wall:** No
-- **Trend aligned:** No
-- **Decision:** fade
-- **Rationale:** Retail noise: 8.4x spike, no wall, no whales — fading
-
-### 2026-04-05T23:14 — highest-temperature-in-austin- (NO)
-- **Magnitude:** 3.7x rolling average
-- **Price wall:** No
-- **Trend aligned:** No
-- **Decision:** fade
-- **Rationale:** Retail noise: 3.7x spike, no wall, no whales — fading
-
-### 2026-04-05T23:14 — bra-mir-bra-2026-04-05-mir (NO)
-- **Magnitude:** 9.1x rolling average
-- **Price wall:** Yes
-- **Trend aligned:** No
-- **Decision:** enter
-- **Rationale:** Strong wall: 9.1x spike with price wall (no whale confirmation)
-
-### 2026-04-05T23:14 — will-trump-talk-to-xi-jinping- (NO)
-- **Magnitude:** 13.9x rolling average
-- **Price wall:** No
-- **Trend aligned:** No
-- **Decision:** fade
-- **Rationale:** Retail noise: 13.9x spike, no wall, no whales — fading
-
-### 2026-04-05T23:09 — highest-temperature-in-seoul-o (NO)
-- **Magnitude:** 3.0x rolling average
-- **Price wall:** Yes
-- **Trend aligned:** No
-- **Decision:** skip
-- **Rationale:** Ambiguous: 3.0x spike, wall=True, whales=0
-
-### 2026-04-05T23:09 — highest-temperature-in-welling (NO)
-- **Magnitude:** 3.2x rolling average
-- **Price wall:** Yes
-- **Trend aligned:** No
-- **Decision:** skip
-- **Rationale:** Ambiguous: 3.2x spike, wall=True, whales=0
-
-### 2026-04-05T23:09 — highest-temperature-in-buenos- (NO)
-- **Magnitude:** 3.4x rolling average
-- **Price wall:** Yes
-- **Trend aligned:** No
-- **Decision:** skip
-- **Rationale:** Ambiguous: 3.4x spike, wall=True, whales=0
-
-### 2026-04-05T23:09 — will-ecuador-win-the-2026-fifa (NO)
-- **Magnitude:** 7.1x rolling average
-- **Price wall:** Yes
-- **Trend aligned:** No
-- **Decision:** enter
-- **Rationale:** Strong wall: 7.1x spike with price wall (no whale confirmation)
-
-### 2026-04-05T23:04 — bra-bah-pal-2026-04-05-draw (NO)
-- **Magnitude:** 7.7x rolling average
-- **Price wall:** Yes
-- **Trend aligned:** No
-- **Decision:** enter
-- **Rationale:** Strong wall: 7.7x spike with price wall (no whale confirmation)
-
-### 2026-04-05T22:54 — lol-dig-sr-2026-04-05 (DIGNITAS)
-- **Magnitude:** 16.0x rolling average
-- **Price wall:** Yes
-- **Trend aligned:** No
-- **Decision:** enter
-- **Rationale:** Strong wall: 16.0x spike with price wall (no whale confirmation)
-
-### 2026-04-05T22:49 — will-ng-reach-3-00-in-april-20 (YES)
-- **Magnitude:** 3.2x rolling average
-- **Price wall:** Yes
-- **Trend aligned:** No
-- **Decision:** skip
-- **Rationale:** Ambiguous: 3.2x spike, wall=True, whales=0
-
-### 2026-04-05T22:49 — arg-riv-bel-2026-04-05-total-2 (UNDER)
-- **Magnitude:** 8.5x rolling average
-- **Price wall:** No
-- **Trend aligned:** No
-- **Decision:** fade
-- **Rationale:** Retail noise: 8.5x spike, no wall, no whales — fading
-
-### 2026-04-05T22:44 — highest-temperature-in-dallas- (NO)
-- **Magnitude:** 3.3x rolling average
-- **Price wall:** Yes
-- **Trend aligned:** No
-- **Decision:** skip
-- **Rationale:** Ambiguous: 3.3x spike, wall=True, whales=0
-
-### 2026-04-05T22:29 — highest-temperature-in-austin- (NO)
-- **Magnitude:** 4.0x rolling average
-- **Price wall:** Yes
-- **Trend aligned:** No
-- **Decision:** skip
-- **Rationale:** Ambiguous: 4.0x spike, wall=True, whales=0
-
-### 2026-04-05T22:29 — nba-cle-mem-2026-04-06 (CAVALIERS)
-- **Magnitude:** 4.4x rolling average
-- **Price wall:** No
-- **Trend aligned:** No
-- **Decision:** fade
-- **Rationale:** Retail noise: 4.4x spike, no wall, no whales — fading
-
-### 2026-04-05T22:29 — bra-cam-cap-2026-04-05-cap (NO)
-- **Magnitude:** 9.1x rolling average
-- **Price wall:** No
-- **Trend aligned:** No
-- **Decision:** fade
-- **Rationale:** Retail noise: 9.1x spike, no wall, no whales — fading
-
-### 2026-04-05T22:24 — highest-temperature-in-austin- (NO)
-- **Magnitude:** 3.8x rolling average
-- **Price wall:** Yes
-- **Trend aligned:** No
-- **Decision:** skip
-- **Rationale:** Ambiguous: 3.8x spike, wall=True, whales=0
-
-### 2026-04-05T22:24 — will-the-cincinnati-reds-win-t (NO)
-- **Magnitude:** 5.3x rolling average
-- **Price wall:** Yes
-- **Trend aligned:** No
-- **Decision:** enter
-- **Rationale:** Strong wall: 5.3x spike with price wall (no whale confirmation)
-
-### 2026-04-05T22:24 — will-the-price-of-ethereum-be- (NO)
-- **Magnitude:** 5.4x rolling average
-- **Price wall:** Yes
-- **Trend aligned:** No
-- **Decision:** enter
-- **Rationale:** Strong wall: 5.4x spike with price wall (no whale confirmation)
-
+*No spike events recorded yet.*
 
 ## Observations & Adaptations
 
 - Agent has 5 open position(s) across 5 unique market(s) with $52.19 total cost basis. Awaiting resolution to calculate win rate and P&L.
-- **Geo-block active:** 152 order attempt(s) blocked by Polymarket region restriction (HTTP 403). Agent must run from a supported region (e.g. deploy on Railway US region) to execute live trades.
+- **Geo-block active:** 58 order attempt(s) blocked by Polymarket region restriction (HTTP 403). Agent must run from a supported region (e.g. deploy on Railway US region) to execute live trades.
 - Positions sourced from 1 tracked wallet(s). Largest contributor: `0x7f3c8979d0afa0...` (5 trade(s), $52.19 cost basis).
-- Volume spike breakdown: 7 entered, 6 faded, 7 skipped.
 
 ## Current Open Positions
 
 | Market | Outcome | Strategy | Entry Price | Size | Opened |
 |--------|---------|----------|-------------|------|--------|
-| Will Bitcoin dip to $35,000 by December  | NO | copy_trade | $0.7400 | 3.26 | 2026-04-04T23:34 |
-| Will Bitcoin dip to $25,000 by December  | NO | copy_trade | $0.8600 | 7.26 | 2026-04-04T23:34 |
-| Will Bitcoin dip to $30,000 by December  | NO | copy_trade | $0.8100 | 8.46 | 2026-04-04T23:34 |
-| Will Bitcoin dip to $45,000 by December  | NO | copy_trade | $0.5200 | 14.37 | 2026-04-04T23:34 |
-| Will Bitcoin dip to $20,000 by December  | NO | copy_trade | $0.9000 | 32.45 | 2026-04-04T23:34 |
+| Will Bitcoin dip to $35,000 by December  | NO | copy_trade | $0.7400 | 3.26 | 2026-04-05T23:34 |
+| Will Bitcoin dip to $25,000 by December  | NO | copy_trade | $0.8600 | 7.26 | 2026-04-05T23:34 |
+| Will Bitcoin dip to $30,000 by December  | NO | copy_trade | $0.8100 | 8.46 | 2026-04-05T23:34 |
+| Will Bitcoin dip to $45,000 by December  | NO | copy_trade | $0.5200 | 14.37 | 2026-04-05T23:34 |
+| Will Bitcoin dip to $20,000 by December  | NO | copy_trade | $0.9000 | 32.45 | 2026-04-05T23:34 |
