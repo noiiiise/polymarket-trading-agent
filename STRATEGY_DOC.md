@@ -18,7 +18,7 @@
 ### Open Positions by Source Wallet
 | Wallet | Open Trades | Cost Basis | First Opened |
 |--------|-------------|------------|--------------|
-| `0x7f3c8979d0afa0...` | 4 | $44.71 | 2026-04-07T21:48 |
+| `0x7f3c8979d0afa0...` | 4 | $44.71 | 2026-04-07T21:49 |
 
 ## Volume Spike Learnings
 
@@ -34,7 +34,7 @@
 
 | Market | Outcome | Strategy | Entry Price | Size | Opened |
 |--------|---------|----------|-------------|------|--------|
-| Will Bitcoin dip to $35,000 by December  | NO | copy_trade | $0.7400 | 3.26 | 2026-04-07T21:48 |
-| Will Bitcoin dip to $25,000 by December  | NO | copy_trade | $0.8600 | 7.26 | 2026-04-07T21:48 |
-| Will Bitcoin dip to $30,000 by December  | NO | copy_trade | $0.8100 | 8.46 | 2026-04-07T21:48 |
-| Will Bitcoin dip to $20,000 by December  | NO | copy_trade | $0.9000 | 32.45 | 2026-04-07T21:48 |
+| Will Bitcoin dip to $35,000 by December  | NO | copy_trade | $0.7400 | 3.26 | 2026-04-07T21:49 |
+| Will Bitcoin dip to $25,000 by December  | NO | copy_trade | $0.8600 | 7.26 | 2026-04-07T21:49 |
+| Will Bitcoin dip to $30,000 by December  | NO | copy_trade | $0.8100 | 8.46 | 2026-04-07T21:49 |
+| Will Bitcoin dip to $20,000 by December  | NO | copy_trade | $0.9000 | 32.45 | 2026-04-07T21:49 |
