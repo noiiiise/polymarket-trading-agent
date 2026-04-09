@@ -13,7 +13,12 @@
 
 ## Copy Trade Performance
 
-*No copy trades recorded yet.*
+**4 open position(s)** across 4 market(s) · total cost basis $44.71
+
+### Open Positions by Source Wallet
+| Wallet | Open Trades | Cost Basis | First Opened |
+|--------|-------------|------------|--------------|
+| `0x7f3c8979d0afa0...` | 4 | $44.71 | 2026-04-09T17:58 |
 
 ## Volume Spike Learnings
 
@@ -21,4 +26,15 @@
 
 ## Observations & Adaptations
 
+- Agent has 4 open position(s) across 4 unique market(s) with $44.71 total cost basis. Awaiting resolution to calculate win rate and P&L.
 - **Geo-block active:** 58 order attempt(s) blocked by Polymarket region restriction (HTTP 403). Agent must run from a supported region (e.g. deploy on Railway US region) to execute live trades.
+- Positions sourced from 1 tracked wallet(s). Largest contributor: `0x7f3c8979d0afa0...` (4 trade(s), $44.71 cost basis).
+
+## Current Open Positions
+
+| Market | Outcome | Strategy | Entry Price | Size | Opened |
+|--------|---------|----------|-------------|------|--------|
+| Will Bitcoin dip to $35,000 by December  | NO | copy_trade | $0.7400 | 3.26 | 2026-04-09T17:58 |
+| Will Bitcoin dip to $25,000 by December  | NO | copy_trade | $0.8600 | 7.26 | 2026-04-09T17:58 |
+| Will Bitcoin dip to $30,000 by December  | NO | copy_trade | $0.8100 | 8.46 | 2026-04-09T17:58 |
+| Will Bitcoin dip to $20,000 by December  | NO | copy_trade | $0.9000 | 32.45 | 2026-04-09T17:58 |
