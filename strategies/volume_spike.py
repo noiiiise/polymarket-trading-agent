@@ -18,6 +18,7 @@ import aiosqlite
 
 import config
 import database
+import reflection
 from execution import OrderExecutor
 from wallet import WalletManager
 
@@ -276,10 +277,37 @@ class VolumeSpikeStrategy:
             decision, rationale,
         )
 
+        # ── Regime guard ────────────────────────────────────────────────────
+        # Auto-disable entries in choppy or risk_off markets when historical
+        # win rate in that regime is below 45%.
+        #
+        # ⭐ LANGGRAPH NOTE: In Phase 2, this regime check becomes the first
+        #    node in a LangGraph decision graph. The graph conditionally routes
+        #    to momentum sub-graphs (trending), mean-reversion (choppy), or
+        #    no-trade (risk_off) based on regime output.
+        current_regime = await self._get_current_regime()
+        regime_win_rates = (
+            await database.get_adaptive_param_json(self._db, "regime_win_rates") or {}
+        )
+
+        if decision in ("enter", "fade"):
+            if (
+                current_regime in ("choppy", "risk_off")
+                and regime_win_rates.get(current_regime, 1.0) < 0.45
+            ):
+                logger.info(
+                    "Skipping %s trade: %s regime with %.0f%% historical win rate",
+                    decision, current_regime,
+                    regime_win_rates[current_regime] * 100,
+                )
+                decision = "skip"
+                rationale += f" [auto-disabled: {current_regime} regime]"
+
         position_id = None
         if decision in ("enter", "fade"):
             position_id = await self._execute_spike_trade(
                 spike, outcome, order_book, token_id, decision,
+                market_regime=current_regime,
             )
 
         try:
@@ -369,6 +397,7 @@ class VolumeSpikeStrategy:
         order_book: dict[str, Any],
         token_id: str,
         decision: str,
+        market_regime: str = "unknown",
     ) -> int | None:
         market_id = spike["market_id"]
         market = spike.get("market")
@@ -430,6 +459,7 @@ class VolumeSpikeStrategy:
             entry_price=price,
             size=size_tokens,
             strategy="volume_spike",
+            market_regime=market_regime,
             notes=(
                 f"Spike {decision}: {spike['spike_ratio']:.1f}x volume, "
                 f"whales={spike.get('whale_count', 0)}, "
@@ -487,6 +517,16 @@ class VolumeSpikeStrategy:
                 return token.get("token_id", "")
         tokens = market.get("tokens", [])
         return tokens[0].get("token_id", "") if tokens else ""
+
+    # ── Regime Detection ─────────────────────────────────────────────────
+
+    async def _get_current_regime(self) -> str:
+        """Detect the current market regime from recent DB activity."""
+        try:
+            return await reflection.detect_market_regime_from_db(self._db)
+        except Exception as e:
+            logger.debug("Regime detection failed: %s", e)
+            return "unknown"
 
     def _prune_old_alerts(self) -> None:
         """Remove stale alert entries to allow re-alerting after cooldown."""

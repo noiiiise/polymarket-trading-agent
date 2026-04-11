@@ -179,6 +179,45 @@ class StrategyDocLogger:
         doc_parts.append(await self._generate_observations(stats))
         doc_parts.append("")
 
+        # Market regime analytics section — populates once trades are tagged
+        regime_stats = stats.get("regime_stats", [])
+        if regime_stats:
+            doc_parts.append("## Market Regime Analytics\n")
+            doc_parts.append(
+                "> Regime is tagged at trade entry using recent spike activity and "
+                "historical win rate. The bot auto-disables volume-spike entries when "
+                "`choppy` or `risk_off` regime win rate drops below 45%.\n"
+            )
+            doc_parts.append("| Regime | Trades | Win Rate | Total P&L |")
+            doc_parts.append("|--------|--------|----------|-----------|")
+            for row in regime_stats:
+                regime = row.get("market_regime", "?")
+                trades = row.get("trades", 0)
+                win_rate = row.get("win_rate", 0)
+                total_pnl = row.get("total_pnl", 0)
+                doc_parts.append(
+                    f"| {regime} | {trades} | {win_rate}% | ${total_pnl:,.2f} |"
+                )
+            doc_parts.append("")
+
+            # Regime SQL query for manual analysis
+            doc_parts.append("<details><summary>SQL: regime breakdown query</summary>\n")
+            doc_parts.append("```sql")
+            doc_parts.append("SELECT market_regime,")
+            doc_parts.append("       COUNT(*) AS trades,")
+            doc_parts.append("       ROUND(AVG(CASE WHEN pnl > 0 THEN 1.0 ELSE 0.0 END) * 100, 1) AS win_rate,")
+            doc_parts.append("       ROUND(SUM(pnl), 2) AS total_pnl")
+            doc_parts.append("FROM positions")
+            doc_parts.append("GROUP BY market_regime")
+            doc_parts.append("ORDER BY total_pnl DESC;")
+            doc_parts.append("```\n")
+            doc_parts.append("</details>\n")
+        elif stats["total_trades"] >= 10:
+            doc_parts.append("## Market Regime Analytics\n")
+            doc_parts.append(
+                "*Regime tagging active. Trades will appear here once positions close.*\n"
+            )
+
         # Open positions
         open_positions = await database.get_open_positions(self._db)
         if open_positions:

@@ -19,6 +19,7 @@ import aiosqlite
 
 import config
 import database
+import reflection
 from execution import OrderExecutor
 from wallet import WalletManager
 
@@ -442,6 +443,12 @@ class CopyTradeStrategy:
 
         exit_target = round(min(price * (1.0 + config.COPY_TRADE_EXIT_PROFIT_PCT), 0.99), 2)
 
+        # Tag market regime at entry so the reflection layer can segment outcomes
+        try:
+            current_regime = await reflection.detect_market_regime_from_db(self._db)
+        except Exception:
+            current_regime = "unknown"
+
         position_id = await database.insert_position(
             self._db,
             market_id=market_id,
@@ -455,6 +462,7 @@ class CopyTradeStrategy:
             source_wallet=source_address,
             token_id=token_id,
             exit_target=exit_target,
+            market_regime=current_regime,
             notes=f"Copied from {wallet_info.get('userName', 'anon')} (rank #{wallet_info['rank']})",
         )
 

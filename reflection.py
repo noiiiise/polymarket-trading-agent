@@ -1,290 +1,322 @@
 """
-reflection.py — Nightly self-improvement loop for polymarket-trading-agent
+Nightly self-improvement and reflection module.
 
-Reads resolved trade outcomes and updates adaptive parameters so future
-decisions are informed by actual historical performance.
+Analyzes recent trade outcomes to detect regime patterns, attribute losses,
+and update adaptive parameters that guard entry decisions in strategies.
 
-Run nightly via cron:
-    0 2 * * * cd /path/to/polymarket-trading-agent && python reflection.py >> logs/reflection.log 2>&1
+Regime detection for Polymarket (no VIX/ADX — adapted for prediction markets):
+  trending  = high spike activity, whale presence, recent win rate ≥ 50%
+  neutral   = moderate activity, insufficient signal
+  choppy    = few spikes, low activity — momentum signals unreliable
+  risk_off  = many spikes but poor outcomes — irrational / noisy market
 
-Or scheduled automatically by agent.py (see _nightly_reflection_loop).
-
-Phase 1 (this file): Pure SQLite analysis, no external dependencies.
-Phase 2 (future):    ChromaDB for semantic memory retrieval at decision time.
-                     LangGraph for multi-step reflection with LLM insights.
-                     Claude API for narrative lessons generation.
+⭐ LANGGRAPH NOTE: In Phase 2, the nightly reflection loop and regime detector
+   become LangGraph nodes in a self-improvement graph:
+     DataCollector → RegimeDetector → LossAttributor → ParamUpdater → DocWriter
+   Each node passes state forward; the graph replaces this sequential module.
+   For now, this runs as a plain async loop called from agent.py every 24h.
 """
 
 import asyncio
 import logging
 from datetime import datetime
-from pathlib import Path
+from typing import Any
 
 import aiosqlite
 
-import config
+import database
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("reflection")
 
-LESSONS_FILE = "lessons.md"
-MIN_SAMPLES_FOR_THRESHOLD = 15   # don't adjust threshold without enough data
-MIN_WIN_RATE_FOR_SIGNAL = 0.55   # require 55%+ win rate to treat spike as actionable
 
+# ── Regime Detection ──────────────────────────────────────────────────────────
 
-# ── Analysis functions ───────────────────────────────────────────────────────
-
-async def compute_adaptive_spike_threshold(db: "DB") -> tuple[float, str]:
-    """
-    Find the lowest spike ratio where historical win rate >= MIN_WIN_RATE_FOR_SIGNAL.
-    Returns (threshold, reason_string).
-
-    Why: a 3x spike might be a coin flip. A 7x spike might be 70% predictive.
-    This finds the empirical cutoff from your own data.
-    """
-    rows = await db.execute_fetchall(
-        """
-        SELECT
-            CAST(ROUND(spike_magnitude, 0) AS INT) AS bin,
-            COUNT(*)                                AS n,
-            ROUND(AVG(CAST(outcome_correct AS FLOAT)), 3) AS win_rate
-        FROM spike_events
-        WHERE resolved_at IS NOT NULL
-          AND outcome_correct IS NOT NULL
-        GROUP BY bin
-        HAVING n >= ?
-        ORDER BY bin ASC
-        """,
-        (MIN_SAMPLES_FOR_THRESHOLD,),
-    )
-
-    for row in rows:
-        if row["win_rate"] >= MIN_WIN_RATE_FOR_SIGNAL:
-            reason = (
-                f"Lowest spike ratio with win_rate>={MIN_WIN_RATE_FOR_SIGNAL} "
-                f"based on {row['n']} samples"
-            )
-            return float(row["bin"]), reason
-
-    return 3.0, "Insufficient data for adaptive threshold, using default"
-
-
-async def analyze_copy_trade_performance(db: "DB") -> dict:
-    """Segment copy trade performance by source wallet (last 30 days)."""
-    rows = await db.execute_fetchall(
-        """
-        SELECT
-            source_wallet,
-            COUNT(*)                                             AS total,
-            SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)            AS wins,
-            COALESCE(SUM(pnl), 0)                                AS total_pnl,
-            ROUND(AVG(pnl), 2)                                   AS avg_pnl
-        FROM positions
-        WHERE strategy = 'copy_trade'
-          AND status = 'closed'
-          AND closed_at >= datetime('now', '-30 days')
-        GROUP BY source_wallet
-        ORDER BY total_pnl DESC
-        """,
-    )
-    return {r["source_wallet"]: dict(r) for r in rows}
-
-
-async def analyze_spike_performance(db: "DB") -> list:
-    """Bin spike performance by magnitude."""
-    return await db.execute_fetchall(
-        """
-        SELECT
-            CAST(ROUND(spike_magnitude, 0) AS INT)          AS spike_bin,
-            COUNT(*)                                         AS total,
-            COALESCE(SUM(outcome_correct), 0)                AS correct,
-            ROUND(AVG(CAST(outcome_correct AS FLOAT))*100,1) AS win_rate_pct,
-            ROUND(AVG(price_move)*100, 2)                    AS avg_price_move_pct
-        FROM spike_events
-        WHERE resolved_at IS NOT NULL
-          AND outcome_correct IS NOT NULL
-        GROUP BY spike_bin
-        ORDER BY spike_bin
-        """,
-    )
-
-
-# ── Lessons document ─────────────────────────────────────────────────────────
-
-def generate_lessons_markdown(
-    spike_stats: list,
-    wallet_stats: dict,
-    new_threshold: float,
-    old_threshold: float,
+def detect_market_regime(
+    recent_spike_count: int,
+    entered_count: int,
+    recent_win_rate: float,
+    avg_spike_magnitude: float,
 ) -> str:
-    """Generate the lessons.md file content."""
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    """
+    Detect current market regime from Polymarket activity metrics.
 
-    lines = [
-        "# Trading Agent Lessons",
-        f"*Last updated: {now}*",
-        "",
-        "## Volume Spike Performance by Magnitude",
-        "",
-        "| Spike Ratio | Trades | Win Rate | Avg Price Move |",
-        "|-------------|--------|----------|----------------|",
-    ]
+    Unlike equity markets, Polymarket has no VIX or ADX. Instead:
+    - "trending"  = active spikes + whales + decent win rate → momentum works
+    - "choppy"    = few spikes → signals unreliable, skip entries
+    - "risk_off"  = many spikes but poor outcomes → noisy / irrational market
+    - "neutral"   = everything else / insufficient data
 
-    for row in spike_stats:
-        lines.append(
-            f"| {row['spike_bin']}x | {row['total']} "
-            f"| {row['win_rate_pct']}% | {row['avg_price_move_pct']}% |"
-        )
+    Thresholds:
+      ADX > 25 analogue  → spike_count ≥ 5 AND avg_magnitude ≥ 5×
+      ADX < 20 analogue  → spike_count < 3 (choppy)
+      VIX > 25 analogue  → spike_count ≥ 10 AND win_rate < 35% (risk_off)
 
-    lines += [
-        "",
-        f"**Adaptive threshold**: {old_threshold}x → **{new_threshold}x**",
-        "",
-        "## Copy Trade Wallet Performance (Last 30 Days)",
-        "",
-    ]
+    ⭐ LANGGRAPH NOTE: In Phase 2, this becomes the first node in a LangGraph
+       decision graph: RegimeDetector → SignalScorer → RiskManager → Executor
+       LangGraph handles state passing and conditional branching between nodes.
+       For now, this is a standalone function called before each trade entry.
+    """
+    if recent_spike_count == 0:
+        return "choppy"
 
-    if wallet_stats:
-        lines += [
-            "| Wallet | Trades | Win Rate | PnL |",
-            "|--------|--------|----------|-----|",
-        ]
-        for addr, s in sorted(
-            wallet_stats.items(), key=lambda x: x[1]["total_pnl"], reverse=True
-        )[:10]:
-            win_rate = s["wins"] / s["total"] * 100 if s["total"] > 0 else 0
-            lines.append(
-                f"| `{addr[:10]}...` | {s['total']} "
-                f"| {win_rate:.0f}% | ${s['total_pnl']:.0f} |"
+    if recent_spike_count >= 5 and avg_spike_magnitude >= 5.0 and recent_win_rate >= 0.50:
+        return "trending"
+
+    if recent_spike_count >= 10 and recent_win_rate < 0.35:
+        return "risk_off"
+
+    if recent_spike_count < 3:
+        return "choppy"
+
+    return "neutral"
+
+
+async def detect_market_regime_from_db(db: aiosqlite.Connection) -> str:
+    """
+    Query the database for recent spike activity and compute the current regime.
+    Looks at spike_events in the last 6 hours and closed positions over 30 days.
+    """
+    try:
+        spike_rows = await db.execute_fetchall("""
+            SELECT
+                COUNT(*) AS total_spikes,
+                SUM(CASE WHEN trade_decision = 'enter' THEN 1 ELSE 0 END) AS entered,
+                COALESCE(AVG(spike_magnitude), 0) AS avg_magnitude
+            FROM spike_events
+            WHERE detected_at >= datetime('now', '-6 hours')
+        """)
+        row = dict(spike_rows[0]) if spike_rows else {}
+        total_spikes = int(row.get("total_spikes") or 0)
+        entered = int(row.get("entered") or 0)
+        avg_mag = float(row.get("avg_magnitude") or 0)
+
+        wr_rows = await db.execute_fetchall("""
+            SELECT COALESCE(AVG(CASE WHEN pnl > 0 THEN 1.0 ELSE 0.0 END), 0.5) AS win_rate
+            FROM positions
+            WHERE status = 'closed'
+              AND closed_at >= datetime('now', '-30 days')
+        """)
+        recent_win_rate = float(wr_rows[0]["win_rate"] if wr_rows else 0.5)
+
+        return detect_market_regime(total_spikes, entered, recent_win_rate, avg_mag)
+    except Exception as e:
+        logger.debug("Regime detection query failed: %s", e)
+        return "unknown"
+
+
+# ── Loss Attribution ──────────────────────────────────────────────────────────
+
+async def attribute_losses(db: aiosqlite.Connection) -> dict[str, int]:
+    """
+    Classify loss reasons for positions closed in the last 30 days.
+
+    Categories for a Polymarket momentum bot:
+    - wrong_direction:              spike/whale signal fired but market resolved against
+    - right_direction_wrong_timing: had positive MFE but position reversed before resolution
+    - right_idea_wrong_regime:      entered during choppy / risk_off conditions
+    - slippage:                     spread cost ate the edge (small loss ≤ 5% of cost basis)
+    - size_too_large:               correct direction, but loss > 20% of cost basis
+
+    max_favorable_excursion and max_adverse_excursion are populated at close time
+    (see close_position in database.py). For positions without excursion data the
+    logic falls back to regime and loss-size heuristics.
+    """
+    losses = await db.execute_fetchall("""
+        SELECT market_regime, cost_basis, pnl,
+               max_favorable_excursion, max_adverse_excursion,
+               entry_price, strategy
+        FROM positions
+        WHERE pnl < 0 AND status = 'closed'
+          AND closed_at >= datetime('now', '-30 days')
+    """)
+
+    attribution: dict[str, int] = {
+        "wrong_direction": 0,
+        "right_direction_wrong_timing": 0,
+        "right_idea_wrong_regime": 0,
+        "slippage": 0,
+        "size_too_large": 0,
+    }
+
+    for _row in losses:
+        trade = dict(_row)
+        regime = trade.get("market_regime") or "unknown"
+        cost = float(trade.get("cost_basis") or 1.0)
+        pnl = float(trade.get("pnl") or 0.0)
+        mfe = float(trade.get("max_favorable_excursion") or 0.0)
+        mae = float(trade.get("max_adverse_excursion") or 0.0)
+        loss_pct = abs(pnl) / max(cost, 0.01)
+
+        if regime in ("choppy", "risk_off"):
+            attribution["right_idea_wrong_regime"] += 1
+        elif loss_pct <= 0.05:
+            attribution["slippage"] += 1
+        elif loss_pct > 0.20:
+            attribution["size_too_large"] += 1
+        elif mfe > 0 and mfe > mae * 0.5:
+            attribution["right_direction_wrong_timing"] += 1
+        else:
+            attribution["wrong_direction"] += 1
+
+    return attribution
+
+
+# ── Nightly Reflection Job ────────────────────────────────────────────────────
+
+async def run_nightly_reflection(db: aiosqlite.Connection) -> None:
+    """
+    Full nightly self-improvement job. Should be called once per 24h.
+
+    1. Compute per-regime win rates  → stored in adaptive_params["regime_win_rates"]
+    2. Attribute recent losses       → stored in adaptive_params["loss_attribution"]
+    3. Backfill signal_performance   → joins spike_events + closed positions
+    4. Log human-readable summary
+    """
+    logger.info("=== Nightly Reflection Starting ===")
+
+    # ── 1. Regime win rates ────────────────────────────────────────────────
+    regime_rows = await db.execute_fetchall("""
+        SELECT market_regime,
+               COUNT(*) AS trades,
+               ROUND(AVG(CASE WHEN pnl > 0 THEN 1.0 ELSE 0.0 END), 4) AS win_rate,
+               ROUND(SUM(pnl), 2) AS total_pnl
+        FROM positions
+        WHERE status = 'closed'
+          AND market_regime IS NOT NULL
+          AND market_regime != 'unknown'
+        GROUP BY market_regime
+        ORDER BY total_pnl DESC
+    """)
+
+    if regime_rows:
+        regime_win_rates = {
+            row["market_regime"]: float(row["win_rate"])
+            for row in regime_rows
+        }
+        await database.set_adaptive_param_json(db, "regime_win_rates", regime_win_rates)
+
+        logger.info("Regime performance summary:")
+        for row in regime_rows:
+            logger.info(
+                "  %-12s  trades=%d  win_rate=%.0f%%  pnl=$%.2f",
+                row["market_regime"], int(row["trades"]),
+                float(row["win_rate"]) * 100, float(row["total_pnl"]),
             )
     else:
-        lines.append("*No closed copy trades in last 30 days.*")
+        logger.info("No tagged trades yet — regime win rates not computed.")
 
-    lines += [
-        "",
-        "---",
-        "",
-        "## Future Enhancements (Not Yet Implemented)",
-        "",
-        "- **Phase 2 — ChromaDB semantic memory**: At decision time, retrieve the 5 most",
-        "  similar past markets and what happened. Helps avoid repeating mistakes on",
-        "  similar market types. Install: `pip install chromadb`.",
-        "",
-        "- **Phase 2 — LangGraph orchestration**: Replace the single-agent loop with a",
-        "  LangGraph graph: Market Scanner → Bull Researcher → Bear Researcher →",
-        "  Trader → Risk Manager. The debate between Bull/Bear reduces overconfidence.",
-        "",
-        "- **Phase 3 — Claude API reflection**: Replace `generate_lessons_markdown()`",
-        "  with a Claude API call that reads the raw data and writes narrative insights.",
-    ]
+    # ── 2. Loss attribution ────────────────────────────────────────────────
+    attribution = await attribute_losses(db)
+    total_losses = sum(attribution.values())
 
-    return "\n".join(lines)
+    if total_losses > 0:
+        logger.info("Loss attribution (%d losses in last 30 days):", total_losses)
+        for reason, count in sorted(attribution.items(), key=lambda x: -x[1]):
+            pct = count / total_losses * 100
+            logger.info("  %-34s %d  (%.0f%%)", reason, count, pct)
+        await database.set_adaptive_param_json(db, "loss_attribution", attribution)
+    else:
+        logger.info("No recent losses to attribute.")
 
+    # ── 3. Backfill signal_performance from closed spike-linked positions ──
+    unrecorded = await db.execute_fetchall("""
+        SELECT p.id          AS position_id,
+               p.market_regime,
+               p.pnl,
+               se.spike_magnitude,
+               se.price_wall,
+               se.trend_aligned
+        FROM positions p
+        JOIN spike_events se ON se.position_id = p.id
+        WHERE p.status = 'closed'
+          AND p.pnl IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM signal_performance sp
+              WHERE sp.position_id = p.id
+                AND sp.signal_name = 'spike_ratio'
+          )
+        LIMIT 200
+    """)
 
-def generate_market_memory_context(market_question: str) -> str:
-    """
-    ⭐ PHASE 2 STUB — ChromaDB semantic memory retrieval.
+    inserted = 0
+    for row in unrecorded:
+        pos_id = int(row["position_id"])
+        regime = row["market_regime"] or "unknown"
+        pnl = float(row["pnl"] or 0)
+        profitable = pnl > 0
+        mag = float(row["spike_magnitude"] or 0)
+        price_wall = bool(row["price_wall"])
+        whale_backed = bool(row["trend_aligned"])
 
-    In Phase 2, replace this with:
-
-        import chromadb
-        client = chromadb.PersistentClient(path="data/chroma")
-        collection = client.get_or_create_collection("trade_memory")
-
-        results = collection.query(
-            query_texts=[market_question],
-            n_results=5
-        )
-        return "\\n".join(results["documents"][0])
-
-    And after each trade resolves, store it:
-        collection.add(
-            documents=[f"{market_question} | outcome: {outcome} | pnl: {pnl}"],
-            ids=[trade_id]
-        )
-
-    This gives the agent context like:
-        "In 5 similar past markets, 3 resolved YES, 2 NO. Key difference was..."
-    """
-    return ""  # Phase 1: no memory retrieval yet
-
-
-# ── Internal DB wrapper ──────────────────────────────────────────────────────
-
-class DB:
-    """Thin async wrapper around an aiosqlite connection for reflection queries."""
-
-    def __init__(self, conn: aiosqlite.Connection) -> None:
-        self._conn = conn
-
-    async def execute_fetchall(self, query: str, params: tuple = ()) -> list:
-        async with self._conn.execute(query, params) as cursor:
-            return await cursor.fetchall()
-
-    async def execute_fetchone(self, query: str, params: tuple = ()) -> any:
-        async with self._conn.execute(query, params) as cursor:
-            return await cursor.fetchone()
-
-    async def set_adaptive_param(
-        self, key: str, value: float, reason: str = ""
-    ) -> None:
-        await self._conn.execute(
-            """INSERT INTO adaptive_params (key, value, reason, updated_at)
-               VALUES (?, ?, ?, datetime('now'))
-               ON CONFLICT(key) DO UPDATE SET
-                   value      = excluded.value,
-                   reason     = excluded.reason,
-                   updated_at = excluded.updated_at""",
-            (key, value, reason),
-        )
-        await self._conn.commit()
-
-    async def get_adaptive_param(
-        self, key: str, default: float | None = None
-    ) -> float | None:
-        row = await self.execute_fetchone(
-            "SELECT value FROM adaptive_params WHERE key = ?", (key,)
-        )
-        return float(row["value"]) if row else default
-
-
-# ── Entry point ──────────────────────────────────────────────────────────────
-
-async def run_reflection() -> dict:
-    logger.info("Starting nightly reflection...")
-
-    async with aiosqlite.connect(config.SQLITE_DB_PATH) as conn:
-        conn.row_factory = aiosqlite.Row
-        db = DB(conn)
-
-        old_threshold = await db.get_adaptive_param("spike_threshold", default=3.0)
-
-        new_threshold, reason = await compute_adaptive_spike_threshold(db)
-        spike_stats = await analyze_spike_performance(db)
-        wallet_stats = await analyze_copy_trade_performance(db)
-
-        await db.set_adaptive_param("spike_threshold", new_threshold, reason)
-        logger.info(
-            "Spike threshold: %.1fx → %.1fx (%s)", old_threshold, new_threshold, reason
+        # spike_ratio signal — bucket by magnitude
+        if mag < 5:
+            bucket = "low"
+        elif mag < 10:
+            bucket = "medium"
+        else:
+            bucket = "high"
+        await database.record_signal_performance(
+            db, "spike_ratio", mag, bucket, pos_id, regime, profitable, pnl
         )
 
-        lessons = generate_lessons_markdown(
-            spike_stats, wallet_stats, new_threshold, old_threshold or 3.0
-        )
-        Path(LESSONS_FILE).write_text(lessons)
-        logger.info("Written %s", LESSONS_FILE)
-
-        # Commit lessons to git if running as a standalone cron job.
-        import subprocess
-        subprocess.run(["git", "add", "lessons.md"], check=False)
-        subprocess.run(
-            ["git", "commit", "-m", f"nightly reflection: spike_threshold={new_threshold}"],
-            check=False,
+        # price_wall signal
+        await database.record_signal_performance(
+            db, "price_wall", float(price_wall),
+            "has_wall" if price_wall else "no_wall",
+            pos_id, regime, profitable, pnl
         )
 
-        logger.info("Reflection complete.")
-        return {"new_threshold": new_threshold, "reason": reason}
+        # whale_backed signal
+        await database.record_signal_performance(
+            db, "whale_backed", float(whale_backed),
+            "has_whales" if whale_backed else "no_whales",
+            pos_id, regime, profitable, pnl
+        )
+
+        inserted += 1
+
+    if inserted:
+        logger.info("Backfilled signal_performance for %d closed positions.", inserted)
+
+    # ── 4. Signal attribution summary (min 3 trades) ──────────────────────
+    sig_rows = await db.execute_fetchall("""
+        SELECT signal_name, signal_bucket, market_regime,
+               COUNT(*) AS trades,
+               ROUND(AVG(was_profitable) * 100, 1) AS win_rate,
+               ROUND(SUM(pnl), 2) AS total_pnl
+        FROM signal_performance
+        GROUP BY signal_name, signal_bucket, market_regime
+        HAVING trades >= 3
+        ORDER BY signal_name, win_rate DESC
+    """)
+
+    if sig_rows:
+        logger.info("Signal attribution (min 3 trades):")
+        for row in sig_rows:
+            logger.info(
+                "  %-20s  %-12s  %-10s  win=%.0f%%  pnl=$%.2f  n=%d",
+                row["signal_name"], row["signal_bucket"], row["market_regime"],
+                float(row["win_rate"]), float(row["total_pnl"]), int(row["trades"]),
+            )
+
+    logger.info("=== Nightly Reflection Complete ===")
 
 
-if __name__ == "__main__":
-    asyncio.run(run_reflection())
+async def reflection_loop(
+    db: aiosqlite.Connection,
+    shutdown_event: asyncio.Event,
+) -> None:
+    """Run nightly reflection every 24 hours. Starts immediately on first run."""
+    while not shutdown_event.is_set():
+        try:
+            await run_nightly_reflection(db)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error("Reflection job failed: %s", e, exc_info=True)
+
+        try:
+            await asyncio.wait_for(shutdown_event.wait(), timeout=86400)
+            break
+        except asyncio.TimeoutError:
+            continue

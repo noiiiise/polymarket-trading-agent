@@ -13,6 +13,7 @@ from datetime import datetime
 import aiosqlite
 import config
 import database
+import reflection
 from execution import OrderExecutor
 from logger import StrategyDocLogger
 from strategies.copy_trade import CopyTradeStrategy
@@ -118,7 +119,7 @@ async def run_agent() -> None:
         "volume_spike": lambda: spike_strategy.run(),
         "daily_summary": lambda: _daily_summary_loop(doc_logger, shutdown_event),
         "pending_sells": lambda: _pending_sells_loop(executor, wallet_mgr, shutdown_event),
-        "nightly_reflection": lambda: _nightly_reflection_loop(shutdown_event),
+        "nightly_reflection": lambda: reflection.reflection_loop(db, shutdown_event),
     }
     tasks = {
         name: asyncio.create_task(factory(), name=name)
@@ -242,33 +243,6 @@ async def _pending_sells_loop(
             break
         except asyncio.TimeoutError:
             pass
-
-
-async def _nightly_reflection_loop(shutdown_event: asyncio.Event) -> None:
-    """Run reflection.run_reflection() every night at 02:00 UTC."""
-    while not shutdown_event.is_set():
-        now = datetime.utcnow()
-        next_run = now.replace(hour=2, minute=0, second=0, microsecond=0)
-        if next_run <= now:
-            # Already past 2am today — schedule for tomorrow.
-            from datetime import timedelta
-            next_run = next_run + timedelta(days=1)
-        wait_secs = (next_run - now).total_seconds()
-        logger.info(
-            "Nightly reflection scheduled in %.0fh %.0fm",
-            wait_secs // 3600, (wait_secs % 3600) // 60,
-        )
-        try:
-            await asyncio.wait_for(shutdown_event.wait(), timeout=wait_secs)
-            break  # shutdown requested
-        except asyncio.TimeoutError:
-            pass
-
-        try:
-            result = await reflection.run_reflection()
-            logger.info("Nightly reflection complete: %s", result)
-        except Exception as e:
-            logger.error("Nightly reflection failed: %s", e)
 
 
 async def _daily_summary_loop(doc_logger: StrategyDocLogger, shutdown_event: asyncio.Event) -> None:

@@ -45,6 +45,12 @@ async def init_db() -> None:
 _MIGRATIONS = [
     "ALTER TABLE positions ADD COLUMN token_id TEXT DEFAULT NULL",
     "ALTER TABLE positions ADD COLUMN exit_target REAL DEFAULT NULL",
+    # Self-improvement layer
+    "ALTER TABLE positions ADD COLUMN market_regime TEXT DEFAULT 'unknown'",
+    "ALTER TABLE positions ADD COLUMN max_favorable_excursion REAL DEFAULT NULL",
+    "ALTER TABLE positions ADD COLUMN max_adverse_excursion REAL DEFAULT NULL",
+    # Migrate adaptive_params if it exists with old float schema
+    "ALTER TABLE adaptive_params ADD COLUMN value_json TEXT DEFAULT NULL",
 ]
 
 
@@ -179,13 +185,28 @@ CREATE TABLE IF NOT EXISTS observations (
 
 CREATE INDEX IF NOT EXISTS idx_observations_created ON observations(created_at);
 
--- Adaptive parameters updated by the nightly reflection loop
+-- Adaptive parameters updated by the nightly reflection loop (JSON values)
 CREATE TABLE IF NOT EXISTS adaptive_params (
     key         TEXT PRIMARY KEY,
-    value       REAL NOT NULL,
-    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    reason      TEXT
+    value_json  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
 );
+
+-- Signal attribution: tracks which signals actually predicted profitable trades
+CREATE TABLE IF NOT EXISTS signal_performance (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    signal_name     TEXT NOT NULL,
+    signal_value    REAL NOT NULL,
+    signal_bucket   TEXT NOT NULL,      -- 'low'/'medium'/'high', 'has_wall'/'no_wall', etc.
+    position_id     INTEGER REFERENCES positions(id),
+    market_regime   TEXT NOT NULL DEFAULT 'unknown',
+    was_profitable  INTEGER NOT NULL DEFAULT 0,
+    pnl             REAL DEFAULT NULL,
+    created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_signal_perf_name ON signal_performance(signal_name, signal_bucket);
+CREATE INDEX IF NOT EXISTS idx_signal_perf_regime ON signal_performance(market_regime);
 """
 
 
@@ -205,6 +226,7 @@ async def insert_position(
     token_id: str | None = None,
     exit_target: float | None = None,
     notes: str = "",
+    market_regime: str = "unknown",
 ) -> int:
     """Insert a new open position and return its ID."""
     cost_basis = entry_price * size
@@ -212,11 +234,11 @@ async def insert_position(
         """INSERT INTO positions
            (market_id, market_slug, market_question, outcome, side, entry_price,
             size, cost_basis, strategy, source_wallet, opened_at,
-            token_id, exit_target, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            token_id, exit_target, notes, market_regime)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (market_id, market_slug, market_question, outcome, side, entry_price,
          size, cost_basis, strategy, source_wallet,
-         datetime.utcnow().isoformat(), token_id, exit_target, notes),
+         datetime.utcnow().isoformat(), token_id, exit_target, notes, market_regime),
     )
     await db.commit()
     return cursor.lastrowid  # type: ignore[return-value]
@@ -388,35 +410,96 @@ async def record_balance_snapshot(
     await db.commit()
 
 
-async def get_adaptive_param(
+async def get_adaptive_param_json(
     db: aiosqlite.Connection,
     key: str,
-    default: float | None = None,
-) -> float | None:
-    """Return the current value of an adaptive parameter, or default if unset."""
+) -> Any | None:
+    """Retrieve a JSON-encoded adaptive parameter, or None if not set."""
+    import json
     rows = await db.execute_fetchall(
-        "SELECT value FROM adaptive_params WHERE key = ?", (key,)
+        "SELECT value_json FROM adaptive_params WHERE key = ?", (key,)
     )
-    return float(rows[0]["value"]) if rows else default
+    if rows and rows[0]["value_json"]:
+        try:
+            return json.loads(rows[0]["value_json"])
+        except (ValueError, KeyError):
+            return None
+    return None
 
 
-async def set_adaptive_param(
+async def set_adaptive_param_json(
     db: aiosqlite.Connection,
     key: str,
-    value: float,
-    reason: str = "",
+    value: Any,
 ) -> None:
-    """Upsert an adaptive parameter with an optional reason string."""
+    """Upsert a JSON-encoded adaptive parameter."""
+    import json
     await db.execute(
-        """INSERT INTO adaptive_params (key, value, reason, updated_at)
-           VALUES (?, ?, ?, datetime('now'))
+        """INSERT INTO adaptive_params (key, value_json, updated_at)
+           VALUES (?, ?, ?)
            ON CONFLICT(key) DO UPDATE SET
-               value      = excluded.value,
-               reason     = excluded.reason,
+               value_json = excluded.value_json,
                updated_at = excluded.updated_at""",
-        (key, value, reason),
+        (key, json.dumps(value), datetime.utcnow().isoformat()),
     )
     await db.commit()
+
+
+async def record_signal_performance(
+    db: aiosqlite.Connection,
+    signal_name: str,
+    signal_value: float,
+    signal_bucket: str,
+    position_id: int | None,
+    market_regime: str,
+    was_profitable: bool,
+    pnl: float | None = None,
+) -> None:
+    """Record a signal outcome for post-hoc attribution analysis."""
+    await db.execute(
+        """INSERT INTO signal_performance
+           (signal_name, signal_value, signal_bucket, position_id,
+            market_regime, was_profitable, pnl, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (signal_name, signal_value, signal_bucket, position_id,
+         market_regime, int(was_profitable), pnl,
+         datetime.utcnow().isoformat()),
+    )
+    await db.commit()
+
+
+async def update_position_excursions(
+    db: aiosqlite.Connection,
+    position_id: int,
+    max_favorable: float | None,
+    max_adverse: float | None,
+) -> None:
+    """Update the peak (MFE) and trough (MAE) excursion values on a position."""
+    await db.execute(
+        """UPDATE positions
+           SET max_favorable_excursion = ?,
+               max_adverse_excursion   = ?
+           WHERE id = ?""",
+        (max_favorable, max_adverse, position_id),
+    )
+    await db.commit()
+
+
+async def get_regime_stats(db: aiosqlite.Connection) -> list[dict[str, Any]]:
+    """Return per-regime trade performance for the STRATEGY_DOC.md analytics section."""
+    rows = await db.execute_fetchall(
+        """SELECT market_regime,
+                  COUNT(*) AS trades,
+                  ROUND(AVG(CASE WHEN pnl > 0 THEN 1.0 ELSE 0.0 END) * 100, 1) AS win_rate,
+                  ROUND(SUM(pnl), 2) AS total_pnl
+           FROM positions
+           WHERE status = 'closed'
+             AND market_regime IS NOT NULL
+             AND market_regime != 'unknown'
+           GROUP BY market_regime
+           ORDER BY total_pnl DESC"""
+    )
+    return [dict(r) for r in rows]
 
 
 async def get_strategy_stats(db: aiosqlite.Connection) -> dict[str, Any]:
@@ -489,4 +572,5 @@ async def get_strategy_stats(db: aiosqlite.Connection) -> dict[str, Any]:
         "open_totals": dict(open_totals[0]) if open_totals else {"cnt": 0, "unique_markets": 0, "total_cost": 0.0},
         "recent_spikes": [dict(r) for r in spike_events],
         "order_summary": {row["status"]: row["cnt"] for row in order_summary},
+        "regime_stats": await get_regime_stats(db),
     }
