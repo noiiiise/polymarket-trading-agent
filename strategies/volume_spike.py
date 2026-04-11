@@ -60,11 +60,18 @@ class VolumeSpikeStrategy:
 
     async def start(self) -> None:
         self._running = True
+        # Load adaptive threshold from DB; fall back to compile-time constant.
+        db_threshold = await database.get_adaptive_param(
+            self._db, "spike_threshold", default=None
+        )
+        self.spike_threshold: float = db_threshold if db_threshold is not None else SPIKE_MULTIPLIER
         logger.info(
             "Volume spike strategy starting — scanning %d markets every %ds, "
-            "spike threshold %.1fx, whale threshold $%dk",
+            "spike threshold %.1fx%s, whale threshold $%dk",
             MARKET_SCAN_LIMIT, SCAN_INTERVAL_SEC,
-            SPIKE_MULTIPLIER, WHALE_THRESHOLD_USD // 1000,
+            self.spike_threshold,
+            " (adaptive)" if db_threshold is not None else " (default)",
+            WHALE_THRESHOLD_USD // 1000,
         )
 
     async def stop(self) -> None:
@@ -131,7 +138,7 @@ class VolumeSpikeStrategy:
 
             spike_ratio = volume_24hr / avg_daily
 
-            if spike_ratio >= SPIKE_MULTIPLIER:
+            if spike_ratio >= self.spike_threshold:
                 prev = self._alerted_markets.get(market_id, 0)
                 if spike_ratio <= prev * 1.2:
                     continue  # Already alerted at similar magnitude
@@ -375,7 +382,7 @@ class VolumeSpikeStrategy:
 
         # Scale position size with spike magnitude: 5% base, up to 15%
         base_pct = 0.05
-        scale = min(spike["spike_ratio"] / SPIKE_MULTIPLIER, 3.0)
+        scale = min(spike["spike_ratio"] / self.spike_threshold, 3.0)
         target_pct = min(base_pct * scale, config.VOLUME_SPIKE_MAX_POSITION_PCT)
 
         price = self._executor.calculate_limit_price(order_book, "BUY")

@@ -178,6 +178,14 @@ CREATE TABLE IF NOT EXISTS observations (
 );
 
 CREATE INDEX IF NOT EXISTS idx_observations_created ON observations(created_at);
+
+-- Adaptive parameters updated by the nightly reflection loop
+CREATE TABLE IF NOT EXISTS adaptive_params (
+    key         TEXT PRIMARY KEY,
+    value       REAL NOT NULL,
+    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    reason      TEXT
+);
 """
 
 
@@ -376,6 +384,37 @@ async def record_balance_snapshot(
            VALUES (?, ?, ?, ?)""",
         (datetime.utcnow().isoformat(), balance, total_exposure,
          balance - total_exposure),
+    )
+    await db.commit()
+
+
+async def get_adaptive_param(
+    db: aiosqlite.Connection,
+    key: str,
+    default: float | None = None,
+) -> float | None:
+    """Return the current value of an adaptive parameter, or default if unset."""
+    rows = await db.execute_fetchall(
+        "SELECT value FROM adaptive_params WHERE key = ?", (key,)
+    )
+    return float(rows[0]["value"]) if rows else default
+
+
+async def set_adaptive_param(
+    db: aiosqlite.Connection,
+    key: str,
+    value: float,
+    reason: str = "",
+) -> None:
+    """Upsert an adaptive parameter with an optional reason string."""
+    await db.execute(
+        """INSERT INTO adaptive_params (key, value, reason, updated_at)
+           VALUES (?, ?, ?, datetime('now'))
+           ON CONFLICT(key) DO UPDATE SET
+               value      = excluded.value,
+               reason     = excluded.reason,
+               updated_at = excluded.updated_at""",
+        (key, value, reason),
     )
     await db.commit()
 

@@ -28,6 +28,30 @@ LEADERBOARD_API = "https://data-api.polymarket.com/v1/leaderboard"
 POSITIONS_API = "https://data-api.polymarket.com/positions"
 
 
+def compute_wallet_score(stats: dict) -> float:
+    """
+    Composite score rewarding consistent edge over lucky streaks.
+    Wallets with <5 trades get heavily discounted (no track record with us yet).
+
+    Why: sorting by raw PnL promotes a whale who made $50K in one lucky bet
+    over a trader who made $30K through 40 consistent wins. The latter has
+    real edge; the former might not.
+    """
+    total_trades = stats.get("wins", 0) + stats.get("losses", 0)
+    if total_trades == 0:
+        return 0.0
+
+    win_rate = stats["wins"] / total_trades
+    roi_proxy = stats.get("total_pnl", 0) / max(total_trades, 1)
+
+    # Credibility: 50 trades = ~50% weight, 10 trades = ~17%, 5 = ~9%
+    # This prevents one-hit wonders from dominating the score.
+    credibility = total_trades / (total_trades + 50)
+
+    score = (win_rate * 0.6 + min(roi_proxy / 500, 0.4)) * credibility
+    return max(score, 0.0)
+
+
 class CopyTradeStrategy:
     """
     Monitors top-performing Polymarket wallets and replicates their trades.
@@ -115,6 +139,24 @@ class CopyTradeStrategy:
         else:
             wallets = await self._fetch_leaderboard()
             wallets = [w for w in wallets if w.get("pnl", 0) > 10_000]
+
+            # Re-rank by composite score (win-rate × credibility) so consistent
+            # traders beat one-hit whales.  Fall back to 0.05 for wallets with
+            # no history in our copy_trade_stats table.
+            scored: list[tuple[dict, float]] = []
+            for w in wallets:
+                addr = w["address"]
+                rows = await self._db.execute_fetchall(
+                    "SELECT * FROM copy_trade_stats WHERE wallet_address = ?",
+                    (addr,),
+                )
+                if rows:
+                    score = compute_wallet_score(dict(rows[0]))
+                else:
+                    score = 0.05  # no history with us yet
+                scored.append((w, score))
+            scored.sort(key=lambda x: x[1], reverse=True)
+            wallets = [w for w, _ in scored]
 
         top = wallets[:config.COPY_TRADE_TOP_WALLETS_COUNT]
 
